@@ -300,8 +300,10 @@ def run_pair(pair_key, forecast_days):
     ens = [round(w['arima']*ar_out['forecast'][i]+w['hw']*hw_out['forecast'][i]+w['mc']*mc_out['p50'][i],4) for i in range(forecast_days)]
     best_idx = int(np.argmin(ens))
 
-    # History (last 120 days for charts, all for longer durations)
-    hist_n = min(120, len(df))
+    # History (dynamic based on forecast duration)
+    # A good rule of thumb is showing history ~3-4x the forecast duration for context.
+    hist_n_map = {7: 30, 14: 60, 30: 90, 60: 180, 90: 250}
+    hist_n = min(hist_n_map.get(forecast_days, 120), len(df))
     H = df.tail(hist_n)
     history = {
         "dates":   [d.strftime("%Y-%m-%d") for d in H.index],
