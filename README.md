@@ -1,116 +1,115 @@
-# 📊 FOREX_QUANT: Advanced Quantitative FX Dashboard
+# FOREX_QUANT: Advanced Quantitative FX Dashboard
 
-> **Institutional-grade quantitative analysis for EUR/INR and USD/INR exchange rates.**  
-> Designed to remove the guesswork from international money transfers by leveraging robust statistical, technical, and probabilistic models.
+**Institutional-grade quantitative analysis framework for EUR/INR and USD/INR exchange rates.**  
+Designed to optimize international capital transfers by forecasting optimal execution windows through the synthesis of robust statistical, probabilistic, and technical models.
 
 🔗 **Live Dashboard** → [https://chennakeshavadasa.github.io/FOREX_QUANT/](https://chennakeshavadasa.github.io/FOREX_QUANT/)
 
 ---
 
-## 🎯 Purpose
-When transferring money internationally (e.g., INR to EUR or USD), a lower exchange rate yields more foreign currency per Rupee. This dashboard synthesizes multiple quantitative models to forecast the **optimal transfer window** across different time horizons (1 Week to 3 Months). 
+## Purpose and Scope
+In the context of cross-border capital allocation (specifically translating INR to base currencies like EUR or USD), minimizing the exchange rate maximizes the foreign currency yield. This framework operationalizes an ensemble of quantitative models to forecast the optimal execution window across configurable investment horizons (1 week to 3 months).
 
 ---
 
-## 🔬 Comprehensive Methodology Breakdown
+## Quantitative Methodology Breakdown
 
-The engine behind this dashboard computes an array of advanced quantitative metrics to form a robust, data-driven perspective on the FX market.
+The core engine computes an array of advanced quantitative metrics to establish a data-driven, probabilistic perspective on the foreign exchange market microstructure.
 
-### 1. Forecasting Models & Ensemble
-We combine three fundamentally different mathematical approaches to predict the future price path. This avoids the pitfalls of relying on a single assumption framework.
+### 1. Forecasting Models & Ensemble Architecture
+We aggregate three fundamentally orthogonal mathematical approaches to forecast price trajectories. This multi-model ensemble mitigates the model risk inherent in single-assumption frameworks.
 
 *   **ARIMA (Autoregressive Integrated Moving Average):**
-    *   **What it does:** Captures the linear autocorrelation structure in the time series.
-    *   **Method:** The engine uses an auto-optimization loop to select the best `(p, d, q)` parameters by minimizing the Akaike Information Criterion (AIC). It models the momentum (AR) and shock persistence (MA) while handling non-stationarity via differencing (I).
+    *   **Mechanism:** Captures linear dependencies and autocorrelation structures within the time series.
+    *   **Execution:** The engine leverages an auto-optimization routine to derive the optimal `(p, d, q)` parameters by minimizing the Akaike Information Criterion (AIC). It models momentum via the AR component, mean-reversion of shocks via the MA component, and integrates difference transformations (I) to achieve stationarity.
 *   **Holt-Winters ETS (Exponential Smoothing):**
-    *   **What it does:** Specifically targets and projects structural seasonality and trend.
-    *   **Method:** We use additive trend and additive seasonality models. For shorter durations, it catches intraday/intra-week cycles; for longer durations, it aligns with monthly/quarterly patterns.
+    *   **Mechanism:** Isolates and projects structural seasonality and localized trend vectors.
+    *   **Execution:** We employ additive trend and seasonal components. For condensed timeframes, it captures intraday and intra-week cyclicality; for extended horizons, it adapts to macroeconomic monthly and quarterly patterns.
 *   **Monte Carlo GBM (Geometric Brownian Motion):**
-    *   **What it does:** Provides a probabilistic distribution of future prices by simulating thousands of possible market paths.
-    *   **Method:** We run **5,000 simulations** based on the historical drift (mean log-return) and volatility (standard deviation). The output creates a percentile "fan" (P5, P25, P50, P75, P95) mapping the probability landscape of the rate.
-*   **The Consensus Ensemble:**
-    *   The final forecast applies a weighted average: `35% ARIMA + 35% Holt-Winters + 30% Monte Carlo Median`. The minimum point of this ensemble within your chosen time horizon acts as the recommended transfer window.
+    *   **Mechanism:** Generates a probabilistic distribution of future rate paths by simulating stochastic market permutations.
+    *   **Execution:** We execute 5,000 independent simulations utilizing historical drift (mean log-return) and volatility (standard deviation). The output constructs a percentile fan (P5, P25, P50, P75, P95) to quantify the probability mass of the forecasted rate.
+*   **Consensus Ensemble:**
+    *   The final projected trajectory is a weighted amalgamation: `35% ARIMA + 35% Holt-Winters + 30% Monte Carlo Median`. The global minimum of this ensemble within the selected time horizon dictates the recommended transfer window.
 
 ### 2. Statistical Analysis & Time-Series Tests
-Before predicting, the system analyzes the fundamental structural properties of the market.
+Before predictive modeling, the system rigorously tests the structural properties of the market data.
 
-*   **Hurst Exponent ($H$):**
-    *   Calculated via R/S (Rescaled Range) analysis. 
-    *   **$H < 0.5$**: The market is *Mean-Reverting* (prices tend to snap back to an average).
-    *   **$H \approx 0.5$**: The market is a *Random Walk* (unpredictable noise).
-    *   **$H > 0.5$**: The market is *Trending* (past moves strongly predict future continuation).
+*   **Hurst Exponent (H):**
+    *   Calculated via Rescaled Range (R/S) analysis to measure the long-term memory of the series.
+    *   **H < 0.5**: The market exhibits mean-reverting properties.
+    *   **H ≈ 0.5**: The market follows a Brownian motion (Random Walk).
+    *   **H > 0.5**: The market is trending, demonstrating persistent autocorrelation.
 *   **Augmented Dickey-Fuller (ADF) Test:**
-    *   Tests the time series for a unit root to determine **stationarity**. Stationarity implies statistical properties like mean and variance are constant over time.
-*   **Jarque-Bera Test & Distribution Shape:**
-    *   Calculates **Skewness** (asymmetry of returns) and **Excess Kurtosis** (fat tails / extreme events). The JB test checks if the return distribution is mathematically normal. FX markets often exhibit "fat tails," meaning extreme moves happen more often than a normal bell curve suggests.
+    *   Tests the null hypothesis that a unit root is present in the time series sample. Rejection of the null hypothesis confirms stationarity, a prerequisite for robust linear forecasting.
+*   **Jarque-Bera Test & Distributional Moments:**
+    *   Quantifies Skewness (asymmetry) and Excess Kurtosis (tail thickness). The JB test evaluates normality. FX markets typically exhibit leptokurtic distributions (fat tails), rendering standard normal assumptions inadequate for extreme event modeling.
 *   **Autocorrelation Function (ACF):**
-    *   Measures how correlated today's price is with the price from $N$ days ago.
+    *   Measures the correlation of the asset's log-returns with its own lagged values to detect serial dependencies.
 
 ### 3. Risk Management & Drawdown Metrics
-Instead of just looking at potential upside, the engine quantifies downside exposure.
+Upside potential is contextualized through strict downside exposure quantification.
 
 *   **Value at Risk (VaR 95% & 99%):**
-    *   Calculated on a daily log-return basis. A 95% VaR of -0.90% means that on 19 out of 20 trading days, the maximum loss will not exceed 0.90%.
+    *   Estimated using the historical distribution of daily log-returns. A 95% VaR of -0.90% indicates a 5% probability that the daily loss will exceed 0.90%.
 *   **Conditional Value at Risk (CVaR / Expected Shortfall):**
-    *   Estimates the average expected loss *on the days where the VaR limit is breached*. It measures the "tail risk."
+    *   Calculates the expected magnitude of the loss given that the VaR threshold has been breached. It serves as a superior measure of tail risk.
 *   **Maximum Drawdown:**
-    *   Calculates the largest historic peak-to-trough drop in the exchange rate.
+    *   Calculates the most severe historical peak-to-trough retracement, providing a baseline for maximum historical capital degradation.
 *   **Rolling Annualized Volatility:**
-    *   Maps historical standard deviation over 10-day, 20-day, and 30-day windows, multiplied by $\sqrt{252}$ to annualize the risk.
+    *   Computes the standard deviation of log-returns over discrete trailing windows (10-day, 20-day, 30-day), annualized via multiplication by the square root of 252 trading days.
 
 ### 4. Technical Indicator Matrix
-A suite of 6 independent technical indicators commonly used by proprietary trading desks.
+A suite of mathematical indicators employed to identify momentum shifts and volatility compression.
 
-*   **RSI (Relative Strength Index, 14-day & 7-day):** Momentum oscillator bounded between 0 and 100. >70 is historically overbought; <30 is oversold.
-*   **MACD (Moving Average Convergence Divergence):** Measures trend direction and momentum shifts using 12/26/9 EMAs.
-*   **Bollinger Bands (%B and Bandwidth):** Plots 2 standard deviations away from a 20-day Simple Moving Average. Identifies volatility squeezes and over-extensions.
-*   **Stochastic Oscillator (14,3):** Compares the closing price to the price range over a specific period.
-*   **Williams %R:** A momentum indicator acting as the inverse of the Fast Stochastic Oscillator.
-*   **Z-Score (20-day rolling):** Measures how many standard deviations the current price is away from the 20-day mean. A high absolute Z-score flags extreme mean-reversion setups.
-*   **Composite Signal:** The system aggregates these indicators into a unified "Buy", "Hold", or "Wait" recommendation.
+*   **RSI (Relative Strength Index):** A momentum oscillator constrained between 0 and 100, measuring the velocity and magnitude of directional price movements.
+*   **MACD (Moving Average Convergence Divergence):** Evaluates the divergence between 12-period and 26-period Exponential Moving Averages (EMA) to identify trend acceleration.
+*   **Bollinger Bands (%B and Bandwidth):** Constructs a dynamic volatility envelope 2 standard deviations away from a 20-period Simple Moving Average (SMA). Bandwidth compression frequently precedes volatility expansion.
+*   **Stochastic Oscillator:** Normalizes the closing price relative to the high-low range over a defined lookback period.
+*   **Williams %R:** An inverse momentum indicator quantifying overbought and oversold conditions.
+*   **Z-Score (20-day rolling):** Represents the number of standard deviations the current spot rate deviates from its 20-day moving average, functioning as a primary signal for mean-reversion trades.
 
 ### 5. Seasonality & Market Microstructure
-*   **Day-of-Week Effect:** Maps the historical average return for each weekday. (e.g., if Mondays historically average a -0.15% return, EUR/USD tends to be cheaper on Mondays).
-*   **Monthly Seasonality:** Identifies macroeconomic cyclical trends across the calendar year.
-*   **Time-Series Decomposition:** Splits the raw price chart into three additive/multiplicative components: Trend, Seasonal, and Residual (noise).
+*   **Day-of-Week Effect:** Analyzes the empirical mean return stratified by weekday to identify systemic inefficiencies in liquidity provision.
+*   **Monthly Seasonality:** Extracts macroscopic macroeconomic cycles and structural flows over the calendar year.
+*   **Time-Series Decomposition:** Applies a multiplicative decomposition algorithm to partition the raw price feed into discrete Trend, Seasonal, and Residual (stochastic noise) components.
 
 ---
 
-## 🚀 How to Run and Update Locally
+## Local Execution and System Updates
 
-The dashboard relies on Python to fetch fresh market data and perform the heavy statistical modeling.
+The analytical engine executes via Python, performing live data acquisition and statistical modeling prior to static deployment.
 
-### Prerequisites
-Make sure you have Python 3 installed along with the required quant libraries:
+### System Requirements
+Python 3.x is required alongside the following libraries:
 ```bash
 pip install pandas numpy scipy yfinance statsmodels ta
 ```
 
-### Refreshing the Data
-Whenever you want to pull the latest live market data and recompute the forecasts:
+### Data Refresh Protocol
+To ingest the latest market data and recalculate the ensemble forecasts:
 
 ```bash
-# 1. Run the quant engine (fetches Yahoo Finance data & crunches models)
+# 1. Execute the quantitative engine (fetches data and runs statistical models)
 python3 engine.py
 
-# 2. Inject the newly generated multi_data.json directly into the HTML
+# 2. Compile the updated data array directly into the static dashboard architecture
 python3 build_dashboard.py
 ```
-After running this, `index.html` will contain the newest data. You can then simply push the changes to GitHub to update the live site.
+Execution of these scripts updates the state of `index.html`. 
 
-### Updating GitHub Pages
+### Deployment to GitHub Pages
 ```bash
 git add .
-git commit -m "Update dashboard data"
+git commit -m "chore: Update quantitative data array"
 git push origin main
 ```
-The live website will automatically update within 60 seconds.
+Given the GitHub Actions CI/CD pipeline, the live environment will reflect the updated data structures within approximately 60 seconds.
 
 ---
 
-## 🛠️ Architecture Stack
-*   **Backend Engine:** `Python 3` (yfinance, statsmodels, scipy, pandas, ta). No active server required; pre-computes everything statically.
-*   **Frontend UI:** `HTML5`, `Vanilla CSS` (Glassmorphism & institutional dark mode), `Chart.js 4.4`
-*   **Deployment:** `GitHub Pages` (100% static, instantly loadable with zero latency).
+## Architecture Stack
+*   **Analytical Backend:** `Python 3` (yfinance, statsmodels, scipy, pandas, ta). Computations are performed statically ahead of time.
+*   **Frontend Interface:** `HTML5`, `Vanilla CSS`, `Chart.js 4.4`.
+*   **Deployment Infrastructure:** `GitHub Pages` utilizing custom GitHub Actions workflows for static site generation.
 
-> **Disclaimer:** This tool is for educational and analytical purposes only. Quantitative models rely on historical precedent which does not guarantee future results. This is not financial advice.
+> **Disclaimer:** This framework is provided strictly for educational and analytical purposes. Quantitative models rely fundamentally on historical stationarity and precedent, which do not guarantee future market behavior. This repository does not constitute financial advice.
