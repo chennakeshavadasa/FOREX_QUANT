@@ -67,6 +67,11 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;
 .pl.active{background:rgba(94,127,255,.18);color:#a5b8ff;border:1px solid rgba(94,127,255,.32)}
 .pl.eur-a{background:rgba(107,143,255,.18);color:#7aa3ff;border:1px solid rgba(107,143,255,.32)}
 .pl.usd-a{background:rgba(74,222,128,.14);color:#4ade80;border:1px solid rgba(74,222,128,.28)}
+.pl.gbp-a{background:rgba(216,180,226,.14);color:#d8b4e2;border:1px solid rgba(216,180,226,.28)}
+.pl.jpy-a{background:rgba(252,165,165,.14);color:#fca5a5;border:1px solid rgba(252,165,165,.28)}
+.pl.cny-a{background:rgba(248,113,113,.14);color:#f87171;border:1px solid rgba(248,113,113,.28)}
+.pl.sgd-a{background:rgba(252,211,77,.14);color:#fcd34d;border:1px solid rgba(252,211,77,.28)}
+.pl.hkd-a{background:rgba(167,139,250,.14);color:#a78bfa;border:1px solid rgba(167,139,250,.28)}
 .pl.dur-a{background:rgba(251,191,36,.14);color:#fbbf24;border:1px solid rgba(251,191,36,.28)}
 .ctrl-ts{margin-left:auto;font-size:13px;color:var(--muted);font-family:'JetBrains Mono',monospace}
 
@@ -213,7 +218,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;
 .hurst-labels{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-weight:700;margin-top:5px}
 
 /* COMPARE */
-.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.cmp-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:19px;margin-bottom:19px}
 @media(max-width:800px){.cmp-grid{grid-template-columns:1fr}}
 .cmp-p{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px;transition:.22s;animation:ci .4s ease both}
 .cmp-p.ep{border-top:2px solid rgba(107,143,255,.5)}
@@ -277,6 +282,11 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;
   <div class="pg">
     <button class="pl eur-a" data-pair="EURINR" onclick="setPair('EURINR',this)">🇪🇺 EUR/INR</button>
     <button class="pl" data-pair="USDINR" onclick="setPair('USDINR',this)">🇺🇸 USD/INR</button>
+    <button class="pl" data-pair="GBPINR" onclick="setPair('GBPINR',this)">🇬🇧 GBP/INR</button>
+    <button class="pl" data-pair="JPYINR" onclick="setPair('JPYINR',this)">🇯🇵 JPY/INR</button>
+    <button class="pl" data-pair="CNYINR" onclick="setPair('CNYINR',this)">🇨🇳 CNY/INR</button>
+    <button class="pl" data-pair="SGDINR" onclick="setPair('SGDINR',this)">🇸🇬 SGD/INR</button>
+    <button class="pl" data-pair="HKDINR" onclick="setPair('HKDINR',this)">🇭🇰 HKD/INR</button>
     <button class="pl" data-pair="compare" onclick="setPair('compare',this)">⚖️ Compare</button>
   </div>
   <span class="ctrl-lbl" style="margin-left:10px">Forecast Window</span>
@@ -329,6 +339,11 @@ const STATE = { pair:'EURINR', dur:14, tab:'overview' };
 const PAIR_META = {
   EURINR:{ label:'EUR/INR', flag:'🇪🇺', base:'EUR', clr:'#6b8fff', clrA:'rgba(107,143,255,', badge:'eur-a' },
   USDINR:{ label:'USD/INR', flag:'🇺🇸', base:'USD', clr:'#4ade80', clrA:'rgba(74,222,128,',  badge:'usd-a' },
+  GBPINR:{ label:'GBP/INR', flag:'🇬🇧', base:'GBP', clr:'#d8b4e2', clrA:'rgba(216,180,226,', badge:'gbp-a' },
+  JPYINR:{ label:'JPY/INR', flag:'🇯🇵', base:'JPY', clr:'#fca5a5', clrA:'rgba(252,165,165,', badge:'jpy-a' },
+  CNYINR:{ label:'CNY/INR', flag:'🇨🇳', base:'CNY', clr:'#f87171', clrA:'rgba(248,113,113,', badge:'cny-a' },
+  SGDINR:{ label:'SGD/INR', flag:'🇸🇬', base:'SGD', clr:'#fcd34d', clrA:'rgba(252,211,77,', badge:'sgd-a' },
+  HKDINR:{ label:'HKD/INR', flag:'🇭🇰', base:'HKD', clr:'#a78bfa', clrA:'rgba(167,139,250,', badge:'hkd-a' },
 };
 const DUR_LABELS = {7:'1 Week',14:'2 Weeks',30:'1 Month',60:'2 Months',90:'3 Months'};
 const SIGNAL_NAMES = {RSI:'RSI-14',MACD:'MACD(12,26,9)',BB:'Bollinger %B',ZScore:'Z-Score(20d)',Stochastic:'Stochastic(14,3)',SMA_Trend:'SMA-50 Trend'};
@@ -398,7 +413,7 @@ function showTab(btn){
 
 function setPair(pair, btn){
   STATE.pair = pair;
-  document.querySelectorAll('[data-pair]').forEach(b => b.classList.remove('active','eur-a','usd-a'));
+  document.querySelectorAll('[data-pair]').forEach(b => b.classList.remove('active','eur-a','usd-a','gbp-a','jpy-a','cny-a','sgd-a','hkd-a'));
   btn.classList.add('active');
   if(pair !== 'compare') btn.classList.add(PAIR_META[pair]?.badge || 'active');
   rerender();
@@ -425,7 +440,7 @@ function rerender(){
    HEADER RATES
    ═══════════════════════════════════════════ */
 function buildHeaderRates(){
-  $('hdr-rates').innerHTML = ['EURINR','USDINR'].map(p => {
+  $('hdr-rates').innerHTML = Object.keys(PAIR_META).map(p => {
     const d = getData(p);
     if(!d) return '';
     const cls = p === 'EURINR' ? 'eur-c' : 'usd-c';

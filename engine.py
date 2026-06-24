@@ -25,6 +25,11 @@ np.random.seed(42)
 PAIRS = {
     "EURINR": {"ticker": "EURINR=X", "base": "EUR", "quote": "INR", "name": "Euro / Indian Rupee",   "flag": "🇪🇺🇮🇳"},
     "USDINR": {"ticker": "INR=X",    "base": "USD", "quote": "INR", "name": "US Dollar / Indian Rupee","flag": "🇺🇸🇮🇳"},
+    "GBPINR": {"ticker": "GBPINR=X", "base": "GBP", "quote": "INR", "name": "UK Pound / Indian Rupee", "flag": "🇬🇧🇮🇳"},
+    "JPYINR": {"ticker": "JPYINR=X", "base": "JPY", "quote": "INR", "name": "Japanese Yen / Indian Rupee", "flag": "🇯🇵🇮🇳"},
+    "CNYINR": {"ticker": "CNYINR=X", "base": "CNY", "quote": "INR", "name": "Chinese Yuan / Indian Rupee", "flag": "🇨🇳🇮🇳"},
+    "SGDINR": {"ticker": "SGDINR=X", "base": "SGD", "quote": "INR", "name": "Singapore Dollar / Indian Rupee", "flag": "🇸🇬🇮🇳"},
+    "HKDINR": {"ticker": "HKDINR=X", "base": "HKD", "quote": "INR", "name": "Hong Kong Dollar / Indian Rupee", "flag": "🇭🇰🇮🇳"},
 }
 
 DURATIONS = {
@@ -347,7 +352,7 @@ def run_pair(pair_key, forecast_days):
 
 def main():
     ALL_DURATIONS = [7, 14, 30, 60, 90]
-    ALL_PAIRS     = ["EURINR", "USDINR"]
+    ALL_PAIRS     = ["EURINR", "USDINR", "GBPINR", "JPYINR", "CNYINR", "SGDINR", "HKDINR"]
     output = {}
 
     for pair in ALL_PAIRS:
