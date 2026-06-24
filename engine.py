@@ -45,10 +45,26 @@ def fetch_data(ticker, lookback):
     end   = datetime.now()
     start = end - timedelta(days=lookback + 60)
     print(f"  [DATA] {ticker} → {start.date()} to {end.date()}")
-    df = yf.download(ticker, start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), auto_adjust=True, progress=False)
-    df = df.ffill().dropna()
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+    
+    if ticker == 'CNYINR=X':
+        df_inr = yf.download('INR=X', start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), auto_adjust=True, progress=False)
+        df_cny = yf.download('CNY=X', start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), auto_adjust=True, progress=False)
+        df_inr = df_inr.ffill().dropna()
+        df_cny = df_cny.ffill().dropna()
+        if isinstance(df_inr.columns, pd.MultiIndex):
+            df_inr.columns = df_inr.columns.get_level_values(0)
+            df_cny.columns = df_cny.columns.get_level_values(0)
+        common = df_inr.index.intersection(df_cny.index)
+        df_inr = df_inr.loc[common]
+        df_cny = df_cny.loc[common]
+        df = df_inr[['Close', 'Open', 'High', 'Low']] / df_cny[['Close', 'Open', 'High', 'Low']]
+        df['Volume'] = 0
+    else:
+        df = yf.download(ticker, start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), auto_adjust=True, progress=False)
+        df = df.ffill().dropna()
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
     df.index = pd.to_datetime(df.index)
     df = df.tail(lookback)
     print(f"  [DATA] {len(df)} rows, latest close: {df['Close'].iloc[-1]:.4f}")
