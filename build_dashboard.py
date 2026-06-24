@@ -1100,12 +1100,7 @@ HTML = HTML.replace('DATA_PLACEHOLDER', data_json)
 print(f"Final HTML size: {len(HTML)/1024:.1f} KB")
 
 # Write the fixed standalone dashboard
-with open('fx-quant-dashboard/index.html', 'w') as f:
+with open('index.html', 'w') as f:
     f.write(HTML)
 
-# Also write updated local version
-with open('fx_dashboard_v2.html', 'w') as f:
-    f.write(HTML)
-
-print("Written: fx-quant-dashboard/index.html")
-print("Written: fx_dashboard_v2.html")
+print("Written: index.html")
