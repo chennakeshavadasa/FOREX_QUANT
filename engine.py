@@ -127,8 +127,9 @@ def statistics(df):
         "acf_lags":        acf(r, nlags=20, fft=True)[1:11].tolist(),
     }
 
-def sr_levels(df, window=20):
+def sr_levels(df):
     c, h, l = df['Close'], df['High'], df['Low']
+    window = max(3, len(df)//10)
     lH, lL, lC = float(h.iloc[-1]), float(l.iloc[-1]), float(c.iloc[-1])
     PP = (lH+lL+lC)/3
     lvls = {
@@ -272,39 +273,38 @@ def run_pair(pair_key, forecast_days):
     df = fetch_data(pair['ticker'], dur['lookback'])
     df = indicators(df)
 
+    hist_n_map = {7: 30, 14: 60, 30: 90, 60: 180, 90: 250}
+    hist_n = min(hist_n_map.get(forecast_days, 120), len(df))
+    H = df.tail(hist_n).copy()
+
     # Forecast dates (business days)
-    last = df.index[-1]; fc_dates = []; d = last+timedelta(days=1)
+    last = H.index[-1]; fc_dates = []; d = last+timedelta(days=1)
     while len(fc_dates) < forecast_days:
         if d.weekday()<5: fc_dates.append(d.strftime("%Y-%m-%d"))
         d += timedelta(days=1)
 
     print("  [STATS] Statistical analysis…")
-    st_out = statistics(df)
+    st_out = statistics(H)
     print("  [S/R]   Support/Resistance…")
-    sr_out = sr_levels(df)
+    sr_out = sr_levels(H)
     print("  [ARIMA] ARIMA forecast…")
-    ar_out = arima_forecast(df['Close'], forecast_days)
+    ar_out = arima_forecast(H['Close'], forecast_days)
     print("  [HW]    Holt-Winters forecast…")
-    hw_out = hw_forecast(df['Close'], forecast_days, dur['seasonal_period'])
+    hw_out = hw_forecast(H['Close'], forecast_days, dur['seasonal_period'])
     print("  [MC]    Monte Carlo (5000 paths)…")
-    mc_out = mc_forecast(df['Close'], forecast_days)
+    mc_out = mc_forecast(H['Close'], forecast_days)
     print("  [SEAS]  Seasonality…")
-    se_out = seasonality(df)
+    se_out = seasonality(H)
     print("  [SIG]   Signals…")
-    sg_out = signals(df)
+    sg_out = signals(H)
     print("  [RISK]  Risk metrics…")
-    rk_out = risk(df)
+    rk_out = risk(H)
 
     # Ensemble
     w = {"arima":0.35,"hw":0.35,"mc":0.30}
     ens = [round(w['arima']*ar_out['forecast'][i]+w['hw']*hw_out['forecast'][i]+w['mc']*mc_out['p50'][i],4) for i in range(forecast_days)]
     best_idx = int(np.argmin(ens))
 
-    # History (dynamic based on forecast duration)
-    # A good rule of thumb is showing history ~3-4x the forecast duration for context.
-    hist_n_map = {7: 30, 14: 60, 30: 90, 60: 180, 90: 250}
-    hist_n = min(hist_n_map.get(forecast_days, 120), len(df))
-    H = df.tail(hist_n)
     history = {
         "dates":   [d.strftime("%Y-%m-%d") for d in H.index],
         "close":   safe_list(H['Close']),   "open":  safe_list(H['Open']),
