@@ -281,6 +281,9 @@ def run_pair(pair_key, forecast_days):
     hist_n_map = {7: 30, 14: 60, 30: 90, 60: 180, 90: 250}
     hist_n = min(hist_n_map.get(forecast_days, 120), len(df))
     H = df.tail(hist_n).copy()
+    
+    # Visual charts strictly match forecast window
+    H_chart = df.tail(forecast_days).copy()
 
     # Forecast dates (business days)
     last = H.index[-1]; fc_dates = []; d = last+timedelta(days=1)
@@ -311,21 +314,21 @@ def run_pair(pair_key, forecast_days):
     best_idx = int(np.argmin(ens))
 
     history = {
-        "dates":   [d.strftime("%Y-%m-%d") for d in H.index],
-        "close":   safe_list(H['Close']),   "open":  safe_list(H['Open']),
-        "high":    safe_list(H['High']),    "low":   safe_list(H['Low']),
-        "sma20":   safe_list(H['SMA_20']),  "sma50": safe_list(H['SMA_50']),
-        "ema21":   safe_list(H['EMA_21']),
-        "bb_upper":safe_list(H['BB_upper']),"bb_lower":safe_list(H['BB_lower']),
-        "bb_mid":  safe_list(H['BB_mid']),  "bb_pct":safe_list(H['BB_pct']),
-        "rsi14":   safe_list(H['RSI_14']),  "rsi7":  safe_list(H['RSI_7']),
-        "macd":    safe_list(H['MACD']),    "macd_sig":safe_list(H['MACD_signal']),
-        "macd_hist":safe_list(H['MACD_hist']),
-        "stoch_k": safe_list(H['Stoch_K']), "stoch_d":safe_list(H['Stoch_D']),
-        "atr":     safe_list(H['ATR_14']),  "cci":   safe_list(H['CCI_20']),
-        "zscore":  safe_list(H['ZScore']),  "willr": safe_list(H['WillR']),
-        "vol10":   safe_list(H['Vol_10d']), "vol20": safe_list(H['Vol_20d']),
-        "returns": safe_list(H['Return_1d']),
+        "dates":   [d.strftime("%Y-%m-%d") for d in H_chart.index],
+        "close":   safe_list(H_chart['Close']),   "open":  safe_list(H_chart['Open']),
+        "high":    safe_list(H_chart['High']),    "low":   safe_list(H_chart['Low']),
+        "sma20":   safe_list(H_chart['SMA_20']),  "sma50": safe_list(H_chart['SMA_50']),
+        "ema21":   safe_list(H_chart['EMA_21']),
+        "bb_upper":safe_list(H_chart['BB_upper']),"bb_lower":safe_list(H_chart['BB_lower']),
+        "bb_mid":  safe_list(H_chart['BB_mid']),  "bb_pct":safe_list(H_chart['BB_pct']),
+        "rsi14":   safe_list(H_chart['RSI_14']),  "rsi7":  safe_list(H_chart['RSI_7']),
+        "macd":    safe_list(H_chart['MACD']),    "macd_sig":safe_list(H_chart['MACD_signal']),
+        "macd_hist":safe_list(H_chart['MACD_hist']),
+        "stoch_k": safe_list(H_chart['Stoch_K']), "stoch_d":safe_list(H_chart['Stoch_D']),
+        "atr":     safe_list(H_chart['ATR_14']),  "cci":   safe_list(H_chart['CCI_20']),
+        "zscore":  safe_list(H_chart['ZScore']),  "willr": safe_list(H_chart['WillR']),
+        "vol10":   safe_list(H_chart['Vol_10d']), "vol20": safe_list(H_chart['Vol_20d']),
+        "returns": safe_list(H_chart['Return_1d']),
     }
 
     return {
