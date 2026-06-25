@@ -1,6 +1,6 @@
 # FX Quant Dashboard
 
-A quantitative foreign exchange analysis platform covering seven INR currency pairs — EUR/INR, USD/INR, GBP/INR, JPY/INR, CNY/INR, SGD/INR, and HKD/INR — with ensemble forecasting, technical indicators, and risk analytics.
+A quantitative foreign exchange analysis platform covering seven currency pairs against the Indian Rupee — EUR, USD, GBP, JPY, CNY, SGD, and HKD — with ensemble forecasting, technical indicators, risk analytics, and seasonality analysis.
 
 **Live Dashboard:** [chennakeshavadasa.github.io/FOREX_QUANT](https://chennakeshavadasa.github.io/FOREX_QUANT/)
 
@@ -8,335 +8,444 @@ A quantitative foreign exchange analysis platform covering seven INR currency pa
 
 ## Table of Contents
 
-1. [Architecture Overview](#architecture-overview)
-2. [Data Acquisition and Preprocessing](#data-acquisition-and-preprocessing)
-3. [Mathematical Basis for Optimal Transfer Date Prediction](#mathematical-basis-for-optimal-transfer-date-prediction)
-   - [Model 1: ARIMA](#model-1-arima-autoregressive-integrated-moving-average)
-   - [Model 2: Holt-Winters ETS](#model-2-holt-winters-ets-exponential-smoothing)
-   - [Model 3: Monte Carlo GBM](#model-3-monte-carlo-gbm-geometric-brownian-motion)
-   - [Ensemble Aggregation](#ensemble-aggregation)
-   - [Optimal Date Selection](#optimal-date-selection)
-4. [Technical Indicators](#technical-indicators)
-5. [Statistical Analysis](#statistical-analysis)
-6. [Risk Metrics](#risk-metrics)
-7. [Seasonality Analysis](#seasonality-analysis)
-8. [Adaptive Window Scaling](#adaptive-window-scaling)
-9. [Direction Toggle: INR to FX vs FX to INR](#direction-toggle)
-10. [CNY/INR Synthetic Cross Rate](#cnyinr-synthetic-cross-rate)
+1. [What Does This Dashboard Do?](#what-does-this-dashboard-do)
+2. [Architecture Overview](#architecture-overview)
+3. [Data Acquisition](#data-acquisition)
+4. [How the Best Transfer Date is Predicted](#how-the-best-transfer-date-is-predicted)
+   - [Model 1: ARIMA](#model-1-arima)
+   - [Model 2: Holt-Winters](#model-2-holt-winters)
+   - [Model 3: Monte Carlo Simulation](#model-3-monte-carlo-simulation)
+   - [Combining the Models](#combining-the-models)
+   - [Picking the Optimal Date](#picking-the-optimal-date)
+5. [Technical Indicators](#technical-indicators)
+6. [Statistical Analysis](#statistical-analysis)
+7. [Risk Metrics](#risk-metrics)
+8. [Seasonality Analysis](#seasonality-analysis)
+9. [Adaptive Window Scaling](#adaptive-window-scaling)
+10. [Direction Toggle — INR to FX vs FX to INR](#direction-toggle)
+11. [CNY/INR Synthetic Cross Rate](#cnyinr-synthetic-cross-rate)
+12. [Disclaimer](#disclaimer)
+
+---
+
+## What Does This Dashboard Do?
+
+> **Plain English Summary**
+
+Imagine you need to send money abroad, or receive money from abroad, and you want to know: *"When is the best time to do it this week / month?"*
+
+This dashboard analyses historical exchange rate data, runs three mathematical forecasting models simultaneously, and predicts the most favourable future date to execute your currency transfer. It covers seven major currency pairs against the Indian Rupee.
+
+**Key things the dashboard gives you:**
+
+| Feature | What it means for you |
+|---|---|
+| Best Transfer Date | The single future day when the models agree the rate will be most favourable |
+| Forecast Chart | A chart showing where the exchange rate is likely to head over your chosen horizon |
+| Technical Signals | 8 indicators that summarise whether the current rate is cheap or expensive |
+| Risk Metrics | How much the rate can move against you on a bad day |
+| Seasonality | Which day of the week or month historically has the best rates |
+| Direction Toggle | Switch between "I'm sending INR abroad" and "I'm receiving money in INR" |
 
 ---
 
 ## Architecture Overview
 
 ```
-engine.py          —  Data fetching, quantitative models, JSON output
-build_dashboard.py —  Embeds JSON into standalone index.html
-index.html         —  Single-file dashboard served via GitHub Pages
-multi_data.json    —  Pre-computed analysis for all pairs and durations
+engine.py          —  Downloads data, runs all models, saves results to JSON
+build_dashboard.py —  Reads JSON and bakes it into a single HTML file
+index.html         —  The dashboard, served via GitHub Pages (no server needed)
+multi_data.json    —  Pre-computed analysis for all 7 pairs × 5 time windows = 35 datasets
 ```
 
-The engine runs all five forecast windows (7d, 14d, 30d, 60d, 90d) for each of the seven currency pairs — 35 distinct analysis contexts — and embeds them into a single HTML file. The client-side JavaScript switches between pre-computed datasets on user interaction with zero network calls.
+The engine pre-computes all 35 analysis contexts (7 currencies × 5 forecast durations) and embeds them into one HTML file. The browser switches between them instantly with zero network calls.
 
 ---
 
-## Data Acquisition and Preprocessing
+## Data Acquisition
 
-Historical OHLCV data is fetched from Yahoo Finance using the `yfinance` library. Each pair uses an adaptive lookback window proportional to the selected forecast horizon:
+Historical daily OHLCV (Open, High, Low, Close, Volume) data is downloaded from Yahoo Finance using the `yfinance` Python library.
 
-| Forecast Horizon | Lookback Window |
-|-----------------|-----------------|
-| 7 days          | 180 days        |
-| 14 days         | 365 days        |
-| 30 days         | 365 days        |
-| 60 days         | 730 days        |
-| 90 days         | 730 days        |
+**Lookback windows used for each forecast horizon:**
 
-Forward-filling is applied to handle weekend and holiday gaps. The visual chart renders only the last N days matching the forecast horizon, keeping the display contextually tight, while statistical models operate on the full lookback window for numerical stability.
+| Forecast Horizon | Data Window Used for Models |
+|---|---|
+| 1 Week (7 days) | 180 days |
+| 2 Weeks (14 days) | 365 days |
+| 1 Month (30 days) | 365 days |
+| 2 Months (60 days) | 730 days |
+| 3 Months (90 days) | 730 days |
+
+> **Why use more data than the forecast length?**
+> Statistical models need enough historical data to learn patterns reliably. You wouldn't predict next week's weather by looking at only the last 7 days — you'd look at historical patterns over months. The same principle applies here.
+
+Missing data (weekends, public holidays) is forward-filled — the last known rate is carried forward.
+
+The **visual charts** only display data matching your selected forecast window (e.g., 7 days of history for a 7-day forecast), keeping the view tight and contextually relevant. The **statistical models** use the full lookback window behind the scenes for numerical stability.
 
 ---
 
-## Mathematical Basis for Optimal Transfer Date Prediction
+## How the Best Transfer Date is Predicted
 
-This is the core quantitative question: **on which future date should you execute a foreign exchange transfer to get the best rate?**
+> **Plain English:** Three independent mathematical models each make a forecast of where the exchange rate will be on every future day in your window. Their predictions are averaged together (with different weights), and the day with the best predicted rate is highlighted as the optimal transfer date.
 
-The dashboard does not make a single deterministic prediction. Instead, it constructs a probability-weighted ensemble of three independent time-series models, each with a different structural assumption about how exchange rates evolve. The date with the minimum ensemble-predicted rate (for INR-to-FX transfers) across the forecast horizon is marked as the **optimal transfer window**.
+The dashboard uses **three independent forecasting models**, each with a different structural assumption about how exchange rates behave. Their outputs are combined into a single **ensemble forecast**.
 
-### Model 1: ARIMA (AutoRegressive Integrated Moving Average)
+---
 
-**Structural assumption:** Past values and past forecast errors linearly predict future values. The series is differenced to achieve stationarity.
+### Model 1: ARIMA
 
-**Mathematical formulation:**
+> **Plain English:** ARIMA looks at the history of the exchange rate and finds patterns — like "whenever the rate goes up 3 days in a row, it tends to come back down." It then uses those patterns to project forward.
 
-The general ARIMA(p, d, q) model on the log-price series $\ln S_t$ after $d$ rounds of differencing:
+**Full name:** AutoRegressive Integrated Moving Average
 
-$$\phi(B)(1-B)^d \ln S_t = \theta(B)\epsilon_t$$
+**Core idea:** The rate today can be predicted from:
+- Its own past values (AutoRegressive part)
+- The past prediction errors (Moving Average part)
+- One round of differencing to remove the trend (Integrated part)
 
-where:
-- $B$ is the backshift operator, $B \ln S_t = \ln S_{t-1}$
-- $\phi(B) = 1 - \phi_1 B - \phi_2 B^2 - \cdots - \phi_p B^p$ is the AR polynomial
-- $\theta(B) = 1 + \theta_1 B + \theta_2 B^2 + \cdots + \theta_q B^q$ is the MA polynomial
-- $\epsilon_t \sim \mathcal{N}(0, \sigma^2)$ are white noise innovations
+**Equation:**
 
-**Order selection:** The optimal $(p, d, q)$ is determined by minimizing the Akaike Information Criterion:
+$$\phi(B)(1-B)^d \ln S_t = \theta(B)\varepsilon_t$$
+
+Where:
+- $S_t$ = exchange rate on day $t$
+- $B$ = backshift operator ($B \ln S_t = \ln S_{t-1}$)
+- $\phi(B)$ = autoregressive polynomial of order $p$
+- $\theta(B)$ = moving-average polynomial of order $q$
+- $d$ = number of differencing steps (typically 1 for FX rates)
+- $\varepsilon_t$ = random noise term
+
+**Choosing the best order (p, d, q):**
+
+The model tests all combinations of $p, q \in \{0, 1, 2, 3\}$ and selects the one with the lowest **AIC (Akaike Information Criterion)**:
 
 $$\text{AIC} = 2k - 2\ln(\hat{L})$$
 
-where $k = p + q + 1$ and $\hat{L}$ is the maximized log-likelihood. The search tests all combinations within $p, q \in \{0,1,2,3\}$ and $d=1$ (confirmed by Augmented Dickey-Fuller test). The order with the lowest AIC is retained.
+where $k$ is the number of parameters and $\hat{L}$ is how well the model fits the data. Lower AIC = better balance of accuracy and simplicity.
 
-**95% Confidence Interval:** Forecast variance grows linearly with horizon $h$:
+**Confidence bands:** As you forecast further into the future, uncertainty grows. The 95% confidence interval widens as:
 
 $$\text{Var}(\hat{S}_{t+h}) = \sigma^2 \sum_{j=0}^{h-1} \psi_j^2$$
 
-where $\psi_j$ are the MA-infinity representation coefficients. The 95% CI is $\hat{S}_{t+h} \pm 1.96\sqrt{\text{Var}(\hat{S}_{t+h})}$.
-
-**Weight in ensemble:** 35%
+**Weight in the final ensemble: 35%**
 
 ---
 
-### Model 2: Holt-Winters ETS (Exponential Smoothing)
+### Model 2: Holt-Winters
 
-**Structural assumption:** The series has a level, a local trend, and a multiplicative seasonal component. Recent observations receive exponentially decaying weights.
+> **Plain English:** Holt-Winters is like a weather forecasting model — it separately tracks the "baseline level" of the rate, whether it's rising or falling (the trend), and repeating patterns within a week or month (seasonality). It gives more weight to recent data than old data.
 
-**Mathematical formulation (multiplicative):**
+**Full name:** Holt-Winters Exponential Smoothing (ETS — Error, Trend, Seasonality)
 
-Level update:
+**Core idea:** Instead of treating all historical data equally, this model puts exponentially more weight on recent observations. It learns three things simultaneously: the current level, the direction of movement, and seasonal cycles.
+
+**Equations (multiplicative form):**
+
+Level — where the rate is right now, adjusted for seasonality:
+
 $$\ell_t = \alpha \frac{y_t}{s_{t-m}} + (1-\alpha)(\ell_{t-1} + b_{t-1})$$
 
-Trend update:
+Trend — whether the rate is rising or falling:
+
 $$b_t = \beta(\ell_t - \ell_{t-1}) + (1-\beta)b_{t-1}$$
 
-Seasonal update:
+Seasonality — recurring weekly/monthly patterns:
+
 $$s_t = \gamma \frac{y_t}{\ell_t} + (1-\gamma)s_{t-m}$$
 
-$h$-step forecast:
-$$\hat{y}_{t+h} = (\ell_t + h b_t) \cdot s_{t+h-m}$$
+Forecast $h$ steps ahead:
 
-where $\alpha, \beta, \gamma \in [0,1]$ are smoothing parameters estimated by minimizing the sum of squared one-step-ahead errors. The seasonal period $m$ is set to 5 (weekly) for short windows and 22 (monthly) for longer windows.
+$$\hat{y}_{t+h} = (\ell_t + h \cdot b_t) \cdot s_{t+h-m}$$
 
-**Why this complements ARIMA:** ARIMA assumes linear dynamics in the differenced series and cannot capture multiplicative seasonality. Holt-Winters explicitly models cyclical patterns, making the two models structurally independent.
+Where $\alpha, \beta, \gamma \in [0,1]$ are smoothing parameters (fitted automatically by minimising one-step forecast errors). $m$ is the seasonal period — set to 5 for weekly cycles and 22 for monthly cycles.
 
-**Weight in ensemble:** 35%
+**Why this complements ARIMA:** ARIMA focuses on linear autocorrelation in the differenced series. Holt-Winters explicitly captures multiplicative seasonal cycles. They are structurally independent, so combining them reduces error.
+
+**Weight in the final ensemble: 35%**
 
 ---
 
-### Model 3: Monte Carlo GBM (Geometric Brownian Motion)
+### Model 3: Monte Carlo Simulation
 
-**Structural assumption:** Exchange rate log-returns follow a Gaussian random walk with drift — the risk-neutral continuous-time model used in Black-Scholes theory.
+> **Plain English:** Monte Carlo runs 5,000 possible "futures" of the exchange rate simultaneously. Each simulated future is slightly different (because currency markets are partly random). The result is a fan of possibilities — showing not just the most likely outcome, but also the optimistic case (P95) and the pessimistic case (P5).
 
-**Mathematical formulation:**
+**Full name:** Monte Carlo Geometric Brownian Motion (GBM) Simulation
 
-Under GBM, the exchange rate $S_t$ satisfies the stochastic differential equation:
+**Core idea:** Exchange rate returns are treated as random, following a normal distribution with a historical mean and standard deviation. The simulation rolls the dice 5,000 times per day per simulation path.
+
+**The stochastic equation:**
 
 $$dS_t = \mu S_t \, dt + \sigma S_t \, dW_t$$
 
-with exact solution:
+Where $\mu$ is the drift (average daily return) and $\sigma$ is the volatility. The exact discrete solution for each day is:
 
-$$S_{t+\Delta t} = S_t \exp\!\left[\left(\mu - \frac{\sigma^2}{2}\right)\Delta t + \sigma \sqrt{\Delta t} \, Z\right], \quad Z \sim \mathcal{N}(0,1)$$
+$$S_{t+1}^{(i)} = S_t \exp\!\left[\left(\mu - \frac{\sigma^2}{2}\right) \frac{1}{252} + \sigma \sqrt{\frac{1}{252}} \cdot Z\right]$$
 
-**Parameter estimation from historical data:**
+where $Z$ is a random draw from a standard normal distribution.
 
-Daily log-returns: $r_t = \ln(S_t / S_{t-1})$
+**Estimating parameters from history:**
 
-$$\hat{\mu} = \bar{r} + \frac{\hat{\sigma}^2}{2}, \quad \hat{\sigma} = \text{std}(r_t) \times \sqrt{252}$$
+$$\mu = \bar{r} + \frac{\sigma^2}{2}, \quad \sigma = \text{std}(r_t) \times \sqrt{252}$$
 
-**Simulation:** 5,000 independent paths are simulated over the forecast horizon $T$ (in business days). For each path $i$ and horizon step $h$:
+where $r_t = \ln(S_t / S_{t-1})$ are the daily log-returns.
 
-$$S_{t+h}^{(i)} = S_t \prod_{k=1}^{h} \exp\!\left[\left(\hat{\mu} - \frac{\hat{\sigma}^2}{2}\right) \frac{1}{252} + \hat{\sigma} \sqrt{\frac{1}{252}} Z_k^{(i)}\right]$$
+**What you see on the chart:**
+- **P50 (median):** The middle path — half the simulations end above this, half below
+- **P5 / P95:** The extreme pessimistic and optimistic scenarios
+- **Probability bar chart:** For each future day, the fraction of the 5,000 simulations where the rate is cheaper than today
 
-**Quantile extraction:** From the 5,000 terminal distributions at each future date, the P5, P25, P50, P75, and P95 quantiles are extracted. The P50 (median) is used in the ensemble.
-
-$$\hat{S}_{t+h}^{\text{MC}} = Q_{0.50}\!\left\{S_{t+h}^{(i)}\right\}_{i=1}^{5000}$$
-
-**Probability metric displayed on dashboard:** For each future date $h$, the dashboard shows $P(S_{t+h} < S_t)$ — the fraction of simulated paths where the future rate is below the current rate, i.e., the probability of a more favourable transfer rate.
-
-**Weight in ensemble:** 30%
+**Weight in the final ensemble: 30%**
 
 ---
 
-### Ensemble Aggregation
+### Combining the Models
 
-The three model forecasts are combined as a deterministic weighted linear combination at each future date $h$:
+> **Plain English:** The three model predictions are blended together like a committee vote — each model has a say, weighted by its reliability for this type of data.
 
-$$\hat{S}_{t+h}^{\text{ens}} = 0.35 \cdot \hat{S}_{t+h}^{\text{ARIMA}} + 0.35 \cdot \hat{S}_{t+h}^{\text{HW}} + 0.30 \cdot \hat{S}_{t+h}^{\text{MC P50}}$$
+The final forecast on each future day is a weighted average:
 
-The weights reflect the relative reliability of each model for short to medium horizons on mean-reverting FX series. ARIMA and Holt-Winters are given equal weight for their complementary linear-versus-seasonal decompositions. Monte Carlo receives slightly lower weight because GBM assumes pure random-walk dynamics (no mean reversion), which tends to underestimate long-term reversion in managed FX pairs like INR crosses.
+$$\hat{S}_{t+h}^{\text{ensemble}} = 0.35 \times \hat{S}_{t+h}^{\text{ARIMA}} + 0.35 \times \hat{S}_{t+h}^{\text{HW}} + 0.30 \times \hat{S}_{t+h}^{\text{MC median}}$$
+
+**Why these weights?**
+- ARIMA and Holt-Winters each get 35% — they are deterministic models that capture different structural properties and are equally reliable at short-to-medium horizons.
+- Monte Carlo gets 30% — it captures uncertainty correctly but assumes a pure random walk (no mean-reversion), which tends to underperform for managed currency pairs like INR crosses.
 
 ---
 
-### Optimal Date Selection
+### Picking the Optimal Date
 
-Given the ensemble forecast vector $\hat{\mathbf{S}}^{\text{ens}} = [\hat{S}_{t+1}^{\text{ens}}, \ldots, \hat{S}_{t+T}^{\text{ens}}]$:
+> **Plain English:** After combining the three models' predictions into one forecast line, the dashboard simply looks for the day with the best predicted rate within your chosen window and marks it with a green dot.
 
-**For INR → FX transfers** (buying foreign currency with Rupees), a lower rate means more units of the foreign currency per Rupee. The optimal date is:
+**For INR → FX transfers** (you are spending Rupees to buy foreign currency):
+A *lower* rate is better — you get more foreign currency per Rupee.
 
-$$h^* = \arg\min_{h \in \{1,\ldots,T\}} \hat{S}_{t+h}^{\text{ens}}$$
+$$h^* = \underset{h \in \{1,\ldots,T\}}{\arg\min} \; \hat{S}_{t+h}^{\text{ensemble}}$$
 
-**For FX → INR transfers** (receiving Rupees from foreign currency), a higher rate means more Rupees per unit of foreign currency. The direction is inverted and $h^*$ maximises the ensemble:
+**For FX → INR transfers** (you are receiving Rupees from foreign currency):
+A *higher* rate is better — you get more Rupees per unit of foreign currency.
 
-$$h^* = \arg\max_{h \in \{1,\ldots,T\}} \hat{S}_{t+h}^{\text{ens}}$$
+$$h^* = \underset{h \in \{1,\ldots,T\}}{\arg\max} \; \hat{S}_{t+h}^{\text{ensemble}}$$
 
-The saving percentage shown is:
+**Potential gain:**
 
-$$\text{Saving \%} = \frac{|S_t - \hat{S}_{t+h^*}^{\text{ens}}|}{S_t} \times 100$$
+$$\text{Gain \%} = \frac{|S_{\text{today}} - \hat{S}_{t+h^*}^{\text{ensemble}}|}{S_{\text{today}}} \times 100$$
 
-**Important caveat:** This is a probabilistic estimate, not a guarantee. All three models extrapolate under specific distributional assumptions. The ensemble minimum identifies the single most-likely optimal point, but the Monte Carlo fan chart shows the full uncertainty distribution.
+> **Important:** This is a probabilistic estimate, not a guarantee. Currency markets are inherently unpredictable. The optimal date represents the model's best guess — the Monte Carlo fan chart shows the full range of uncertainty.
 
 ---
 
 ## Technical Indicators
 
-All indicators are computed on the chart window (equal in length to the forecast horizon) to ensure visual and analytical consistency.
+> **Plain English:** Technical indicators are mathematical formulas applied to the price history that summarise whether the currency is currently "cheap", "expensive", "rising", or "falling." This dashboard computes 8 of them and combines them into a single composite score from 0 (strong sell) to 100 (strong buy).
 
-| Indicator | Formula | Signal Logic |
-|-----------|---------|-------------|
-| **RSI-14** | $RSI = 100 - \frac{100}{1 + RS}$, $RS = \frac{\text{Avg Gain}}{\text{Avg Loss}}$ over 14 periods | >70: overbought (FX expensive); <30: oversold (FX cheap) |
-| **MACD(12,26,9)** | $\text{MACD} = \text{EMA}_{12} - \text{EMA}_{26}$; Signal $= \text{EMA}_9(\text{MACD})$ | MACD crossing above Signal: bullish momentum |
-| **Bollinger %B** | $\%B = \frac{S_t - \text{Lower}_{20,2\sigma}}{\text{Upper}_{20,2\sigma} - \text{Lower}_{20,2\sigma}}$ | <0.1: rate near lower band (cheap to buy FX); >0.9: near upper band |
-| **Stochastic(14,3)** | $\%K = \frac{S_t - \text{Low}_{14}}{\text{High}_{14} - \text{Low}_{14}} \times 100$ | <20: oversold; >80: overbought |
-| **Williams %R** | $\%R = \frac{\text{High}_{14} - S_t}{\text{High}_{14} - \text{Low}_{14}} \times (-100)$ | <-80: oversold; >-20: overbought |
-| **ATR-14** | $\text{ATR} = \text{EMA}_{14}(\text{TrueRange}_t)$ | Volatility magnitude in INR |
-| **CCI-20** | $\text{CCI} = \frac{S_t - \text{SMA}_{20}}{0.015 \cdot \text{MAD}_{20}}$ | <-100: oversold; >+100: overbought |
-| **Z-Score(20d)** | $Z = \frac{S_t - \mu_{20}}{\sigma_{20}}$ | Deviation from 20-day mean in standard deviations |
-| **SMA-50 Trend** | $\text{SMA}_{50} = \frac{1}{50}\sum_{i=0}^{49} S_{t-i}$ | $S_t > \text{SMA}_{50}$: uptrend in FX rate |
+All indicators are computed on the chart window that matches your selected forecast duration.
 
-The composite signal score aggregates all indicator readings into a 0–100 scale, where 0 = strong sell and 100 = strong buy (from an INR-to-FX perspective).
+| Indicator | What it measures | Simple signal |
+|---|---|---|
+| **RSI-14** | Momentum — how fast price has risen vs fallen over 14 days | Below 30: cheap (buy); Above 70: expensive (wait) |
+| **MACD(12,26,9)** | Trend direction — difference between fast and slow moving averages | Line crosses above signal: upward momentum |
+| **Bollinger %B** | Where the current rate sits within its normal range | Near 0: at the low end (cheap); Near 1: at the high end |
+| **Stochastic(14,3)** | Where today's price sits vs recent highs and lows | Below 20: oversold; Above 80: overbought |
+| **Williams %R** | Similar to Stochastic, different calculation | Below -80: cheap; Above -20: expensive |
+| **ATR-14** | How much the rate moves on an average day | Higher = more volatile = more risk per day |
+| **CCI-20** | How far the rate is from its 20-day average (in standard units) | Below -100: unusually cheap; Above +100: unusually expensive |
+| **Z-Score(20d)** | Standard deviations above/below the 20-day mean | Below -2: statistically cheap; Above +2: statistically expensive |
+
+**Mathematical formulas:**
+
+RSI:
+
+$$\text{RSI} = 100 - \frac{100}{1 + \frac{\text{Avg Gain (14d)}}{\text{Avg Loss (14d)}}}$$
+
+Bollinger %B (where is today's rate within the Bollinger Bands?):
+
+$$\%B = \frac{S_t - \text{Lower Band}}{\text{Upper Band} - \text{Lower Band}}$$
+
+Z-Score (how many standard deviations from the mean?):
+
+$$Z = \frac{S_t - \mu_{20}}{\sigma_{20}}$$
 
 ---
 
 ## Statistical Analysis
 
-### Hurst Exponent (R/S Analysis)
+> **Plain English:** Beyond the forecast, the dashboard runs a set of statistical tests on the historical data to characterise how the exchange rate behaves — does it tend to come back to average? Does it follow trends? Are big moves more common than a normal distribution would predict?
 
-The Hurst exponent $H$ measures long-range dependence in the return series, estimated via rescaled range analysis:
+### Hurst Exponent
+
+**What it tells you:** Whether the exchange rate tends to **trend** (keep moving in the same direction), **mean-revert** (bounce back), or move **randomly**.
+
+**Formula:**
 
 $$H = \frac{\ln(R/S)}{\ln(n)}$$
 
-where $R/S$ is the rescaled range of the return series over $n$ observations. Interpretation:
+where $R/S$ is the rescaled range of the return series.
 
-- $H < 0.5$: Mean-reverting (anti-persistent). The rate tends to return to its mean — buy dips.
-- $H = 0.5$: Geometric Brownian Motion (random walk). No exploitable autocorrelation.
-- $H > 0.5$: Trending (persistent). Moves in the current direction tend to continue.
+| Value of H | Meaning | Trading implication |
+|---|---|---|
+| H < 0.5 | Mean-reverting | Rate bounces back — buy dips, sell rallies |
+| H ≈ 0.5 | Random walk | No exploitable pattern |
+| H > 0.5 | Trending | Moves persist — follow the trend |
 
 ### Return Distribution Tests
 
-- **Skewness:** $\gamma_1 = \frac{E[(r - \mu)^3]}{\sigma^3}$ — asymmetry of the log-return distribution.
-- **Excess Kurtosis:** $\gamma_2 = \frac{E[(r - \mu)^4]}{\sigma^4} - 3$ — fat-tail risk relative to a normal distribution.
-- **Jarque-Bera Test:** $JB = n \left(\frac{\gamma_1^2}{6} + \frac{(\gamma_2)^2}{24}\right) \sim \chi^2_2$ — tests for normality; high JB values indicate non-normal (fat-tailed) returns.
-- **Augmented Dickey-Fuller Test:** Tests the null hypothesis $H_0: \phi = 1$ (unit root, non-stationary). Rejection confirms stationarity of the return series.
+**Skewness** — is the distribution of daily returns lopsided?
 
-### Rolling Volatility
+$$\gamma_1 = \frac{E[(r - \mu)^3]}{\sigma^3}$$
 
-Three rolling windows of annualised volatility are plotted:
+Positive skew: more frequent small losses, occasional large gains. Negative: more frequent small gains, occasional large crashes.
 
-$$\sigma_{\text{ann}}^{(n)} = \sigma_{\text{daily}}^{(n)} \times \sqrt{252}, \quad \sigma_{\text{daily}}^{(n)} = \text{std}\!\left(r_{t-n+1}, \ldots, r_t\right)$$
+**Excess Kurtosis** — are extreme moves more common than a normal distribution predicts?
 
-for $n \in \{10, 20, 30\}$ trading days.
+$$\gamma_2 = \frac{E[(r - \mu)^4]}{\sigma^4} - 3$$
+
+Values above 0 indicate "fat tails" — large rate movements happen more often than a simple bell curve would suggest.
+
+**Augmented Dickey-Fuller (ADF) Test:** Tests whether the return series is stationary (suitable for ARIMA). A p-value below 0.05 confirms stationarity.
+
+**Jarque-Bera Test:** Tests whether returns follow a normal distribution. A very low p-value confirms non-normality (fat tails), which is almost always the case for FX returns.
+
+### Annualised Volatility
+
+$$\sigma_{\text{annual}}^{(n)} = \sigma_{\text{daily}}^{(n)} \times \sqrt{252}$$
+
+Computed for rolling windows of $n \in \{10, 20, 30\}$ trading days, where $\sigma_{\text{daily}}^{(n)}$ is the standard deviation of daily log-returns over those $n$ days.
 
 ---
 
 ## Risk Metrics
 
-### Value at Risk and Expected Shortfall
+> **Plain English:** These metrics answer: "How much can I lose / gain if I wait?" and "What's the worst that could realistically happen?"
 
-Let $r_t$ denote daily log-returns. Define the empirical quantile function $Q_\alpha$ over the historical sample.
+### Value at Risk (VaR)
 
-$$\text{VaR}_{95} = -Q_{0.05}(r), \quad \text{VaR}_{99} = -Q_{0.01}(r)$$
+**What it means:** The maximum loss you'd expect on a given day, 95% or 99% of the time.
 
-$$\text{CVaR}_{95} = -E[r \mid r < Q_{0.05}(r)] \quad \text{(Expected Shortfall)}$$
+> Example: If 95% VaR = 0.4%, it means on 19 out of 20 days, the rate will not move more than 0.4% against you.
 
-CVaR is the average loss in the worst 5% of days — a coherent risk measure that satisfies sub-additivity, unlike VaR.
+$$\text{VaR}_{95} = -Q_{0.05}(r)$$
+
+$$\text{VaR}_{99} = -Q_{0.01}(r)$$
+
+where $Q_\alpha$ is the $\alpha$-th quantile of the historical daily returns.
+
+### Conditional VaR / Expected Shortfall (CVaR)
+
+**What it means:** On the worst 5% of days — the days that *do* breach the VaR threshold — what is the average loss?
+
+$$\text{CVaR}_{95} = -E[r \mid r < Q_{0.05}(r)]$$
+
+CVaR is considered more informative than VaR because it describes the severity of tail events, not just their threshold.
 
 ### Maximum Drawdown
 
-$$\text{MDD} = \max_{t \in [0,T]} \frac{\text{Peak}_t - S_t}{\text{Peak}_t}, \quad \text{Peak}_t = \max_{s \leq t} S_s$$
+**What it means:** The largest drop the exchange rate has experienced from a peak to a subsequent trough in the historical window.
 
-This measures the largest peak-to-trough decline in the exchange rate over the historical window.
+$$\text{MDD} = \max_{t \in [0,T]} \frac{\text{Peak}_t - S_t}{\text{Peak}_t}$$
 
-### Dollar-Cost Averaging Rates
+where $\text{Peak}_t = \max_{s \leq t} S_s$.
 
-The DCA rate over $n$ days is the simple arithmetic mean of the last $n$ closing rates:
+### Dollar-Cost Averaging (DCA)
+
+**What it means:** Instead of transferring all your money on one day, you split it across 5 or 10 days. The DCA rate is the average rate you'd get.
 
 $$\text{DCA}_n = \frac{1}{n} \sum_{i=0}^{n-1} S_{t-i}$$
 
-Executing a transfer in equal instalments over $n$ days converges to this rate, reducing single-execution risk.
+DCA reduces the risk of timing the market badly — you automatically buy at both high and low rates, averaging out.
 
 ---
 
 ## Seasonality Analysis
 
+> **Plain English:** Are there patterns in which day of the week or month the exchange rate tends to be cheapest? This section analyses historical data to find those patterns.
+
 ### Day-of-Week Effect
 
-For each weekday $d \in \{\text{Mon}, \ldots, \text{Fri}\}$, the mean log-return is computed over all historical observations falling on that day:
+For each weekday, the average daily log-return is computed across all historical data:
 
 $$\bar{r}_d = \frac{1}{|T_d|} \sum_{t \in T_d} r_t$$
 
-A significantly negative $\bar{r}_d$ (in INR-to-FX mode) indicates that the foreign currency rate tends to fall on that day — a statistically favourable day for INR-to-FX purchases.
+**Green bars** = days when the foreign currency tends to be cheaper on average (good for INR→FX transfers). **Red bars** = days when it tends to be more expensive.
+
+> Note: These are historical averages — not guarantees. A Tuesday being historically "green" doesn't mean next Tuesday will definitely be cheap.
 
 ### Monthly Seasonality
 
-The same computation is applied by calendar month:
+Same idea, grouped by calendar month:
 
 $$\bar{r}_m = \frac{1}{|T_m|} \sum_{t \in T_m} r_t$$
 
-### Time-Series Decomposition (Multiplicative STL)
+### Time-Series Decomposition
 
-The rate series is decomposed as:
+The full rate series is decomposed into three components:
 
-$$S_t = T_t \cdot C_t \cdot R_t$$
+$$S_t = T_t \times C_t \times R_t$$
 
-where:
-- $T_t$ is the underlying trend (extracted via Loess smoothing)
-- $C_t$ is the cyclical-seasonal component (periodic patterns)
-- $R_t$ is the irregular residual
-
-The decomposition reveals whether recent rate movements are trend-driven or mean-reverting seasonal noise.
+| Component | What it is |
+|---|---|
+| $T_t$ — Trend | The long-run direction (e.g., Rupee gradually weakening) |
+| $C_t$ — Seasonal | Recurring cyclical patterns within the window |
+| $R_t$ — Residual | What's left over — the "noise" that isn't explained by trend or seasonality |
 
 ---
 
 ## Adaptive Window Scaling
 
-A core design principle of this dashboard is that **the analysis window scales with the selected forecast duration**. When a user selects a 1-week forecast, the charts and statistical models operate on data from approximately the last 30 trading days — a tight, recent window. When the user selects a 3-month forecast, models are calibrated on up to 2 years of data to capture the longer-term distributional properties.
+> **Plain English:** When you select "1 Week" forecast, the charts show you the last 7 days of data and forecast the next 7 days. When you select "3 Months," the charts show the last 3 months and forecast the next 3 months. The analysis adapts to your chosen horizon — it doesn't show you the same view regardless of what you select.
 
-This ensures that:
-1. Short-window forecasts reflect current micro-structure and recent volatility.
-2. Long-window forecasts are statistically robust via larger sample sizes.
-3. Model AIC comparisons are valid within the same calibration window.
+The charts scale **1:1 with the forecast window** — the historical view always matches the forward view in length. This is intentional: comparing 7 days of history against a 7-day forecast is contextually meaningful; comparing 2 years of history against a 7-day forecast would make the forecast invisible.
+
+Behind the scenes, statistical models still use the full lookback window (up to 2 years) for robust parameter estimation, but the display adapts to your selection.
 
 ---
 
 ## Direction Toggle
 
-The **INR → FX** mode (default) models the perspective of an investor or individual converting Indian Rupees into a foreign currency. A lower exchange rate is favourable — more foreign currency per Rupee.
+> **Plain English:**
+> - **INR → FX (default):** You are sending Rupees abroad. You want the exchange rate to be *as low as possible* — fewer Rupees needed to buy 1 Euro/Dollar/Pound.
+> - **FX → INR:** You are receiving foreign money in India. You want the exchange rate to be *as high as possible* — more Rupees received per Euro/Dollar/Pound.
+>
+> Clicking the toggle flips the entire dashboard: the charts invert, the "best date" changes, and all forecasts are recalculated from your perspective.
 
-The **FX → INR** mode models the perspective of repatriating foreign earnings or receiving remittances. A higher exchange rate is favourable — more Rupees per unit of foreign currency. In this mode:
+**What mathematically changes when you switch to FX → INR:**
 
-- All displayed rates are inverted: $\tilde{S}_t = 1 / S_t$
-- The optimal date selector switches from $\arg\min$ to $\arg\max$ of the ensemble
-- The seasonality colour coding inverts (positive return days highlighted as favourable)
-- Risk scenario tables reframe from FX received to INR received
+All displayed rates are inverted:
+
+$$\tilde{S}_t = \frac{1}{S_t}$$
+
+For example, if EUR/INR = 90.5, then in FX→INR mode it shows INR/EUR = 0.01105 (how many Euros per 1 Rupee you'd receive back).
+
+The optimal date switches from minimising to maximising the ensemble:
+
+$$h^* = \underset{h}{\arg\min} \; \tilde{S}_{t+h} \equiv \underset{h}{\arg\max} \; S_{t+h}$$
+
+The Monte Carlo fan chart also flips — what was the P5 (pessimistic) band becomes P95 (optimistic) when viewed from the INR-receiver's perspective, and vice versa.
 
 ---
 
 ## CNY/INR Synthetic Cross Rate
 
-Yahoo Finance does not provide historical time-series data for the direct CNY/INR pair. The dashboard constructs a synthetic cross rate using two liquid USD cross rates:
+> **Plain English:** Yahoo Finance does not directly provide historical CNY/INR data. Instead, the dashboard constructs it using two rates that *are* available: USD/INR and USD/CNY. Since everything is priced against the US Dollar, you can calculate CNY/INR by dividing one by the other.
+
+**Formula:**
 
 $$S_t^{\text{CNY/INR}} = \frac{S_t^{\text{USD/INR}}}{S_t^{\text{USD/CNY}}}$$
 
-where:
-- $S_t^{\text{USD/INR}}$ is downloaded as the ticker `INR=X` (USD per INR, inverted as INR per USD)
-- $S_t^{\text{USD/CNY}}$ is downloaded as the ticker `CNY=X` (USD per CNY, inverted as CNY per USD)
+**Sources:**
+- `INR=X` on Yahoo Finance: USD/INR rate (how many INR per 1 USD)
+- `CNY=X` on Yahoo Finance: USD/CNY rate (how many CNY per 1 USD)
 
-Both series are aligned on common trading dates (intersection of their indices) before division. This produces a synthetic daily OHLCV series for CNY/INR with the same statistical properties as any directly quoted pair.
+Both series are aligned to their common trading dates before division. This gives a complete daily OHLCV series for CNY/INR.
 
-The triangular arbitrage relationship holds exactly in liquid markets:
+**The triangular arbitrage identity** guarantees this is mathematically exact in liquid markets:
 
 $$\frac{\text{USD}}{\text{INR}} \div \frac{\text{USD}}{\text{CNY}} = \frac{\text{CNY}}{\text{INR}}$$
 
-All downstream models (ARIMA, Holt-Winters, Monte Carlo) operate identically on this synthetic series.
+All downstream models (ARIMA, Holt-Winters, Monte Carlo) run identically on this synthetic series as on any directly quoted pair.
 
 ---
 
 ## Disclaimer
 
-This tool is for analytical and educational purposes only. It does not constitute financial advice. All forecasts are probabilistic estimates based on historical data and statistical models. Past patterns do not guarantee future exchange rate movements. Consult a licensed financial advisor before making foreign exchange decisions.
+This tool is for analytical and educational purposes only. It does not constitute financial advice. All forecasts are probabilistic estimates derived from historical data and mathematical models. Past patterns do not guarantee future exchange rate movements. Currency markets are affected by macroeconomic, geopolitical, and regulatory factors that no model can fully capture. Consult a licensed financial advisor before making foreign exchange decisions.
