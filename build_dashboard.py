@@ -217,6 +217,12 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;
   width:3px;height:22px;border-radius:2px;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.8);transition:left 1s ease}
 .hurst-labels{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-weight:700;margin-top:5px}
 
+/* DIRECTION TOGGLE */
+.dir-toggle{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:10px;padding:3px;margin-left:auto}
+.dir-btn{padding:5px 14px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;transition:.18s;white-space:nowrap}
+.dir-btn.active{background:linear-gradient(135deg,#5e7fff,#a259f7);color:#fff;box-shadow:0 2px 10px rgba(94,127,255,.3)}
+.dir-btn:hover:not(.active){color:var(--slate);background:rgba(255,255,255,.05)}
+
 /* COMPARE */
 .cmp-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:19px;margin-bottom:19px}
 @media(max-width:800px){.cmp-grid{grid-template-columns:1fr}}
@@ -297,6 +303,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;
     <button class="pl" data-dur="60" onclick="setDur(60,this)">2 Months</button>
     <button class="pl" data-dur="90" onclick="setDur(90,this)">3 Months</button>
   </div>
+  <div class="dir-toggle" title="Switch transfer direction">
+    <button class="dir-btn active" id="dir-buy" onclick="setDirection('buy',this)">INR → FX</button>
+    <button class="dir-btn" id="dir-sell" onclick="setDirection('sell',this)">FX → INR</button>
+  </div>
   <span class="ctrl-ts" id="ctrl-ts"></span>
 </div>
 
@@ -334,7 +344,7 @@ const ALL_DATA = DATA_PLACEHOLDER;
 /* ═══════════════════════════════════════════
    STATE  — single source of truth
    ═══════════════════════════════════════════ */
-const STATE = { pair:'EURINR', dur:14, tab:'overview' };
+const STATE = { pair:'EURINR', dur:14, tab:'overview', direction:'buy' }; // direction: 'buy'=INR→FX, 'sell'=FX→INR
 
 const PAIR_META = {
   EURINR:{ label:'EUR/INR', flag:'🇪🇺', base:'EUR', clr:'#6b8fff', clrA:'rgba(107,143,255,', badge:'eur-a' },
@@ -424,6 +434,25 @@ function setDur(dur, btn){
   document.querySelectorAll('[data-dur]').forEach(b => b.classList.remove('active','dur-a'));
   btn.classList.add('active','dur-a');
   rerender();
+}
+
+function setDirection(dir, btn){
+  STATE.direction = dir;
+  document.querySelectorAll('.dir-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  rerender();
+}
+
+/* Helper: get display rate adjusted for direction */
+function displayRate(rawRate){
+  if(!rawRate || isNaN(rawRate)) return null;
+  return STATE.direction === 'sell' ? +(1/rawRate).toFixed(6) : +rawRate;
+}
+function dirLabel(base){ return STATE.direction === 'sell' ? `INR/${base}` : `${base}/INR`; }
+function dirDesc(base){
+  return STATE.direction === 'sell'
+    ? `Receiving INR from ${base} — a <strong>higher rate</strong> = more INR per ${base} = better.`
+    : `Sending INR to buy ${base} — a <strong>lower rate</strong> = more ${base} per Rupee = better.`;
 }
 
 /* rerender: re-draws current tab with new STATE */
@@ -629,18 +658,40 @@ function renderRisk(d){
    SEASONALITY
    ═══════════════════════════════════════════ */
 function renderSeasonality(d){
+  if(!d || !d.seasonality){
+    $('sec-seasonality').innerHTML = '<div style="padding:60px;text-align:center;color:var(--muted)">Seasonality data unavailable for this window.</div>';
+    return;
+  }
+  const SE = d.seasonality;
+  const dowOK  = SE.dow   && Object.keys(SE.dow).length > 0;
+  const monOK  = SE.monthly && Object.keys(SE.monthly).length > 0;
+  const decOK  = SE.decomp_trend && SE.decomp_trend.length > 2;
+  const isSell = STATE.direction === 'sell';
+  const cheapDir = isSell
+    ? `a <strong>positive mean return</strong> day = ${d.meta.base} is stronger — more INR when selling.`
+    : `a <strong>negative mean return</strong> day = ${d.meta.base} is cheaper — ideal for INR→${d.meta.base} transfers.`;
   $('sec-seasonality').innerHTML = `
     <div class="expl">
       <div class="expl-title">📅 Seasonality in ${d.meta.name} · ${d.meta.forecast_label} forecast</div>
-      <div class="expl-body">Empirical patterns by <strong>day-of-week</strong> and <strong>calendar month</strong>. A <strong>negative mean return</strong> day = ${d.meta.base} tends to be <strong>cheaper</strong> — ideal for INR→${d.meta.base} transfers. Not guaranteed — treat as probabilistic edge.</div>
+      <div class="expl-body">Empirical patterns by <strong>day-of-week</strong> and <strong>calendar month</strong>. ${cheapDir} Not guaranteed — treat as probabilistic edge.</div>
     </div>
     <div class="g2">
-      <div class="cc"><div class="ch"><div><div class="ct">📆 Day-of-Week Effect</div><div class="cs">Mean daily return — negative = EUR/USD cheaper</div></div></div><div class="sb-w" id="se-dow-bars"></div><div class="cw" style="height:190px;margin-top:16px"><canvas id="c-dow"></canvas></div></div>
-      <div class="cc"><div class="ch"><div><div class="ct">🗓️ Monthly Seasonality</div><div class="cs">Mean return by calendar month</div></div></div><div class="cw" style="height:320px"><canvas id="c-month"></canvas></div></div>
+      <div class="cc">
+        <div class="ch"><div><div class="ct">📆 Day-of-Week Effect</div><div class="cs">Mean daily log-return per weekday (all available history)</div></div></div>
+        ${dowOK ? '<div class="sb-w" id="se-dow-bars"></div><div class="cw" style="height:190px;margin-top:16px"><canvas id="c-dow"></canvas></div>' : '<div style="padding:30px;text-align:center;color:var(--muted)">Insufficient data for this window — switch to 1 Month+</div>'}
+      </div>
+      <div class="cc">
+        <div class="ch"><div><div class="ct">🗓️ Monthly Seasonality</div><div class="cs">Mean return by calendar month</div></div></div>
+        ${monOK ? '<div class="cw" style="height:320px"><canvas id="c-month"></canvas></div>' : '<div style="padding:30px;text-align:center;color:var(--muted)">Insufficient data for this window — switch to 1 Month+</div>'}
+      </div>
     </div>
-    <div class="cc"><div class="ch"><div><div class="ct">🔁 Time-Series Decomposition</div><div class="cs">Multiplicative: Trend · Seasonal · Residual — last 90 days</div></div></div><div class="cw" style="height:260px"><canvas id="c-decomp"></canvas></div></div>`;
-  buildDOWBars('se-dow-bars', d);
-  mkDOW(d); mkMonth(d); mkDecomp(d);
+    <div class="cc">
+      <div class="ch"><div><div class="ct">🔁 Time-Series Decomposition</div><div class="cs">Multiplicative: Trend · Seasonal · Residual over the selected window</div></div></div>
+      ${decOK ? '<div class="cw" style="height:260px"><canvas id="c-decomp"></canvas></div>' : '<div style="padding:30px;text-align:center;color:var(--muted)">Decomposition requires at least 30 data points — switch to 1 Month+</div>'}
+    </div>`;
+  if(dowOK){ buildDOWBars('se-dow-bars', d, isSell); mkDOW(d, isSell); }
+  if(monOK){ mkMonth(d, isSell); }
+  if(decOK){ mkDecomp(d); }
 }
 
 /* ═══════════════════════════════════════════
@@ -855,19 +906,7 @@ function buildHurstViz(d){
   setTimeout(()=>{ const n=$('st-h-ndl'); if(n) n.style.left=Math.min(95,Math.max(5,(H/1.2)*100))+'%'; },500);
 }
 
-function buildDOWBars(elId, d){
-  const days=Object.entries(d.seasonality.dow);
-  const maxA=Math.max(...days.map(([,v])=>Math.abs(v.mean_return)));
-  const el=$(elId); el.innerHTML='';
-  days.forEach(([day,val])=>{
-    const isPos=val.mean_return>0, pct=(Math.abs(val.mean_return)/maxA*80).toFixed(1);
-    const row=document.createElement('div'); row.className='sb-row';
-    row.innerHTML=`<div class="sb-lbl">${day.slice(0,3)}</div>
-      <div class="sb-bg"><div class="sb-fill ${isPos?'pos':'neg'}" style="width:${pct}%"></div></div>
-      <div class="sb-val ${isPos?'pos':'neg'}">${val.mean_return>0?'+':''}${val.mean_return.toFixed(3)}%</div>`;
-    el.appendChild(row);
-  });
-}
+/* buildDOWBars defined below with isSell parameter */
 
 function buildRiskHero(elId, d){
   const RK=d.risk, FC=d.forecast;
@@ -1074,31 +1113,54 @@ function mkDD(d){
     options:{...baseOpts('Drawdown (%)'),scales:{...baseOpts().scales,y:{...baseOpts().scales.y,max:0}}}});
 }
 
-function mkDOW(d){
+function buildDOWBars(elId, d, isSell){
+  if(!d.seasonality||!d.seasonality.dow) return;
   const days=Object.entries(d.seasonality.dow);
+  if(!days.length) return;
+  const maxA=Math.max(...days.map(([,v])=>Math.abs(v.mean_return))); if(maxA===0) return;
+  const el=$(elId); if(!el) return; el.innerHTML='';
+  days.forEach(([day,val])=>{
+    const v=val.mean_return;
+    // INR->FX: lower rate (negative return) = good (green). FX->INR: higher rate (positive) = good (green).
+    const isGood = isSell ? v>0 : v<0;
+    const pct=(Math.abs(v)/maxA*80).toFixed(1);
+    const row=document.createElement('div'); row.className='sb-row';
+    row.innerHTML=`<div class="sb-lbl">${day.slice(0,3)}</div>
+      <div class="sb-bg"><div class="sb-fill ${isGood?'neg':'pos'}" style="width:${pct}%"></div></div>
+      <div class="sb-val ${isGood?'neg':'pos'}">${v>0?'+':''}${v.toFixed(3)}%</div>`;
+    el.appendChild(row);
+  });
+}
+
+function mkDOW(d, isSell){
+  if(!d.seasonality||!d.seasonality.dow) return;
+  const days=Object.entries(d.seasonality.dow);
+  if(!days.length) return;
   mkChart('dow',{type:'bar',data:{labels:days.map(([k])=>k),datasets:[{label:'Mean Return %',data:days.map(([,v])=>v.mean_return),
-    backgroundColor:days.map(([,v])=>v.mean_return<0?'rgba(16,185,129,.52)':'rgba(239,68,68,.42)'),
-    borderColor:days.map(([,v])=>v.mean_return<0?'#10b981':'#ef4444'),borderWidth:1}]},
+    backgroundColor:days.map(([,v])=>(isSell?(v>0):(v<0))?'rgba(16,185,129,.52)':'rgba(239,68,68,.42)'),
+    borderColor:days.map(([,v])=>(isSell?(v>0):(v<0))?'#10b981':'#ef4444'),borderWidth:1}]},
     options:{...baseOpts('Mean Return (%)'),plugins:{legend:{display:false}}}});
 }
 
-function mkMonth(d){
+function mkMonth(d, isSell){
+  if(!d.seasonality||!d.seasonality.monthly) return;
   const months=Object.entries(d.seasonality.monthly);
+  if(!months.length) return;
   mkChart('month',{type:'bar',data:{labels:months.map(([k])=>k),datasets:[{label:'Mean Return %',data:months.map(([,v])=>v.mean_return),
-    backgroundColor:months.map(([,v])=>v.mean_return<0?'rgba(16,185,129,.52)':'rgba(239,68,68,.42)'),
-    borderColor:months.map(([,v])=>v.mean_return<0?'#10b981':'#ef4444'),borderWidth:1}]},
+    backgroundColor:months.map(([,v])=>(isSell?(v.mean_return>0):(v.mean_return<0))?'rgba(16,185,129,.52)':'rgba(239,68,68,.42)'),
+    borderColor:months.map(([,v])=>(isSell?(v.mean_return>0):(v.mean_return<0))?'#10b981':'#ef4444'),borderWidth:1}]},
     options:{...baseOpts('Mean Return (%)'),plugins:{legend:{display:false}},indexAxis:'y'}});
 }
 
 function mkDecomp(d){
   const SE=d.seasonality;
-  if(!SE.decomp_trend||!SE.decomp_trend.length){ killChart('decomp'); return; }
-  const N=SE.decomp_trend.length, lbs=Array.from({length:N},(_,i)=>'D-'+(N-i));
+  if(!SE||!SE.decomp_trend||SE.decomp_trend.length<3){ killChart('decomp'); return; }
+  const N=SE.decomp_trend.length, lbs=d.history&&d.history.dates?d.history.dates.slice(-N):Array.from({length:N},(_,i)=>'D-'+(N-i));
   mkChart('decomp',{type:'line',data:{labels:lbs,datasets:[
     {label:'Trend',data:SE.decomp_trend,borderColor:'#5e7fff',borderWidth:2,fill:false},
     {label:'Seasonal',data:SE.decomp_seasonal,borderColor:'#fbbf24',borderWidth:1.5,borderDash:[3,3],fill:false},
     {label:'Residual',data:SE.decomp_residual,borderColor:'#a259f7',borderWidth:1,borderDash:[2,2],fill:false},
-  ]},options:baseOpts('Component Value')});
+  ]},options:{...baseOpts('Component Value'),plugins:{legend:{display:true,position:'bottom',labels:{color:'#a8b2d1',font:{size:13}}}}}});
 }
 
 /* ═══════════════════════════════════════════
