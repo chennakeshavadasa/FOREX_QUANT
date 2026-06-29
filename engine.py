@@ -20,16 +20,10 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import ta
 
 warnings.filterwarnings("ignore")
-np.random.seed(42)
 
 PAIRS = {
     "EURINR": {"ticker": "EURINR=X", "base": "EUR", "quote": "INR", "name": "Euro / Indian Rupee",   "flag": "🇪🇺🇮🇳"},
     "USDINR": {"ticker": "INR=X",    "base": "USD", "quote": "INR", "name": "US Dollar / Indian Rupee","flag": "🇺🇸🇮🇳"},
-    "GBPINR": {"ticker": "GBPINR=X", "base": "GBP", "quote": "INR", "name": "UK Pound / Indian Rupee", "flag": "🇬🇧🇮🇳"},
-    "JPYINR": {"ticker": "JPYINR=X", "base": "JPY", "quote": "INR", "name": "Japanese Yen / Indian Rupee", "flag": "🇯🇵🇮🇳"},
-    "CNYINR": {"ticker": "CNYINR=X", "base": "CNY", "quote": "INR", "name": "Chinese Yuan / Indian Rupee", "flag": "🇨🇳🇮🇳"},
-    "SGDINR": {"ticker": "SGDINR=X", "base": "SGD", "quote": "INR", "name": "Singapore Dollar / Indian Rupee", "flag": "🇸🇬🇮🇳"},
-    "HKDINR": {"ticker": "HKDINR=X", "base": "HKD", "quote": "INR", "name": "Hong Kong Dollar / Indian Rupee", "flag": "🇭🇰🇮🇳"},
 }
 
 DURATIONS = {
@@ -47,24 +41,44 @@ def fetch_data(ticker, lookback):
     print(f"  [DATA] {ticker} → {start.date()} to {end.date()}")
     
     if ticker == 'CNYINR=X':
-        df_inr = yf.download('INR=X', start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), auto_adjust=True, progress=False)
-        df_cny = yf.download('CNY=X', start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), auto_adjust=True, progress=False)
-        df_inr = df_inr.ffill().dropna()
-        df_cny = df_cny.ffill().dropna()
-        if isinstance(df_inr.columns, pd.MultiIndex):
-            df_inr.columns = df_inr.columns.get_level_values(0)
-            df_cny.columns = df_cny.columns.get_level_values(0)
-        common = df_inr.index.intersection(df_cny.index)
-        df_inr = df_inr.loc[common]
-        df_cny = df_cny.loc[common]
-        df = df_inr[['Close', 'Open', 'High', 'Low']] / df_cny[['Close', 'Open', 'High', 'Low']]
-        df['Volume'] = 0
+        # Try direct ticker first
+        df_direct = yf.download('CNYINR=X', start=start.strftime("%Y-%m-%d"),
+                                end=end.strftime("%Y-%m-%d"),
+                                auto_adjust=True, progress=False)
+        df_direct = df_direct.ffill().dropna()
+        if isinstance(df_direct.columns, pd.MultiIndex):
+            df_direct.columns = df_direct.columns.get_level_values(0)
+
+        if len(df_direct) >= 30:
+            print(f"  [DATA] CNYINR=X → direct ticker OK ({len(df_direct)} rows)")
+            df = df_direct
+        else:
+            # Synthetic fallback: (USD/INR) / (USD/CNY)
+            print("  [DATA] CNYINR=X → direct unavailable, building synthetic cross")
+            df_inr = yf.download('INR=X', start=start.strftime("%Y-%m-%d"),
+                                 end=end.strftime("%Y-%m-%d"),
+                                 auto_adjust=True, progress=False)
+            df_cny = yf.download('CNY=X', start=start.strftime("%Y-%m-%d"),
+                                 end=end.strftime("%Y-%m-%d"),
+                                 auto_adjust=True, progress=False)
+            df_inr = df_inr.ffill().dropna()
+            df_cny = df_cny.ffill().dropna()
+            if isinstance(df_inr.columns, pd.MultiIndex):
+                df_inr.columns = df_inr.columns.get_level_values(0)
+            if isinstance(df_cny.columns, pd.MultiIndex):
+                df_cny.columns = df_cny.columns.get_level_values(0)
+            common  = df_inr.index.intersection(df_cny.index)
+            df_inr  = df_inr.loc[common]
+            df_cny  = df_cny.loc[common]
+            df      = df_inr[['Close', 'Open', 'High', 'Low']] / \
+                      df_cny[['Close', 'Open', 'High', 'Low']]
+            df['Volume'] = 0
     else:
         df = yf.download(ticker, start=start.strftime("%Y-%m-%d"), end=end.strftime("%Y-%m-%d"), auto_adjust=True, progress=False)
         df = df.ffill().dropna()
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
 
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
     df.index = pd.to_datetime(df.index)
     df = df.tail(lookback)
     print(f"  [DATA] {len(df)} rows, latest close: {df['Close'].iloc[-1]:.4f}")
@@ -130,6 +144,7 @@ def statistics(df):
     adf_s, adf_p, *_ = adfuller(r)
     mu, sig = r.mean(), r.std()
     v95, v99 = np.percentile(r,5), np.percentile(r,1)
+    _jb = stats.jarque_bera(r)
     return {
         "mu_daily":        float(mu),
         "sigma_daily":     float(sig),
@@ -143,14 +158,13 @@ def statistics(df):
         "sharpe_ratio":    float((mu/sig)*np.sqrt(252) if sig>0 else 0),
         "hurst_exp":       float(hurst(c.values.tolist())),
         "adf_stat":        float(adf_s), "adf_p": float(adf_p),
-        "jb_stat":         float(stats.jarque_bera(r)[0]),
-        "jb_p":            float(stats.jarque_bera(r)[1]),
+        "jb_stat":         float(_jb[0]),
+        "jb_p":            float(_jb[1]),
         "acf_lags":        acf(r, nlags=20, fft=True)[1:11].tolist(),
     }
 
-def sr_levels(df):
+def sr_levels(df, window=20):
     c, h, l = df['Close'], df['High'], df['Low']
-    window = max(3, len(df)//10)
     lH, lL, lC = float(h.iloc[-1]), float(l.iloc[-1]), float(c.iloc[-1])
     PP = (lH+lL+lC)/3
     lvls = {
@@ -207,21 +221,36 @@ def hw_forecast(series, n, seasonal_period):
         return {"forecast":[round(last,4)]*n,"lower_95":[round(last-2*rs,4)]*n,"upper_95":[round(last+2*rs,4)]*n,"alpha":0.0}
 
 def mc_forecast(series, n, n_sims=MC_SIMS):
-    lr = np.log(series/series.shift(1)).dropna()
-    mu, sig, S0 = lr.mean(), lr.std(), float(series.iloc[-1])
-    sims = np.zeros((n, n_sims))
-    for t in range(n):
-        prev = S0 if t==0 else sims[t-1]
-        sims[t] = prev * np.exp((mu-0.5*sig**2) + sig*np.random.standard_normal(n_sims))
-    pcts = np.percentile(sims,[5,25,50,75,95],axis=1)
+    """
+    GBM Monte Carlo — vectorized via np.cumprod, no Python time-step loop.
+    """
+    lr  = np.log(series / series.shift(1)).dropna()
+    mu  = float(lr.mean())
+    sig = float(lr.std())
+    S0  = float(series.iloc[-1])
+
+    # (n × n_sims): each column = one independent price path
+    shocks = np.exp(
+        (mu - 0.5 * sig ** 2)
+        + sig * np.random.standard_normal((n, n_sims))
+    )
+    sims = S0 * np.cumprod(shocks, axis=0)   # shape (n, n_sims)
+
+    pcts       = np.percentile(sims, [5, 25, 50, 75, 95], axis=1)
     prob_below = (sims < S0).mean(axis=1)
+    best_idx   = int(np.argmin(pcts[2]))
+
     return {
-        "S0":round(S0,4),"mu_daily":float(mu),"sigma_daily":float(sig),
-        "p5": [round(v,4) for v in pcts[0]],"p25":[round(v,4) for v in pcts[1]],
-        "p50":[round(v,4) for v in pcts[2]],"p75":[round(v,4) for v in pcts[3]],
-        "p95":[round(v,4) for v in pcts[4]],
-        "prob_below_current":[round(float(p),4) for p in prob_below],
-        "best_transfer_day_idx":int(np.argmin(pcts[2])),
+        "S0":                 round(S0, 4),
+        "mu_daily":           mu,
+        "sigma_daily":        sig,
+        "p5":                 [round(float(v), 4) for v in pcts[0]],
+        "p25":                [round(float(v), 4) for v in pcts[1]],
+        "p50":                [round(float(v), 4) for v in pcts[2]],
+        "p75":                [round(float(v), 4) for v in pcts[3]],
+        "p95":                [round(float(v), 4) for v in pcts[4]],
+        "prob_below_current": [round(float(p), 4) for p in prob_below],
+        "best_transfer_day_idx": best_idx,
     }
 
 def seasonality(df):
@@ -294,57 +323,53 @@ def run_pair(pair_key, forecast_days):
     df = fetch_data(pair['ticker'], dur['lookback'])
     df = indicators(df)
 
-    hist_n_map = {7: 30, 14: 60, 30: 90, 60: 180, 90: 250}
-    hist_n = min(hist_n_map.get(forecast_days, 120), len(df))
-    H = df.tail(hist_n).copy()
-    
-    # Visual charts strictly match forecast window
-    H_chart = df.tail(forecast_days).copy()
-
     # Forecast dates (business days)
-    last = H.index[-1]; fc_dates = []; d = last+timedelta(days=1)
+    last = df.index[-1]; fc_dates = []; d = last+timedelta(days=1)
     while len(fc_dates) < forecast_days:
         if d.weekday()<5: fc_dates.append(d.strftime("%Y-%m-%d"))
         d += timedelta(days=1)
 
     print("  [STATS] Statistical analysis…")
-    st_out = statistics(H)
+    st_out = statistics(df)
     print("  [S/R]   Support/Resistance…")
-    sr_out = sr_levels(H)
+    sr_out = sr_levels(df)
     print("  [ARIMA] ARIMA forecast…")
-    ar_out = arima_forecast(H['Close'], forecast_days)
+    ar_out = arima_forecast(df['Close'], forecast_days)
     print("  [HW]    Holt-Winters forecast…")
-    hw_out = hw_forecast(H['Close'], forecast_days, dur['seasonal_period'])
+    hw_out = hw_forecast(df['Close'], forecast_days, dur['seasonal_period'])
     print("  [MC]    Monte Carlo (5000 paths)…")
-    mc_out = mc_forecast(H['Close'], forecast_days)
+    mc_out = mc_forecast(df['Close'], forecast_days)
     print("  [SEAS]  Seasonality…")
-    se_out = seasonality(H)
+    se_out = seasonality(df)
     print("  [SIG]   Signals…")
-    sg_out = signals(H)
+    sg_out = signals(df)
     print("  [RISK]  Risk metrics…")
-    rk_out = risk(H)
+    rk_out = risk(df)
 
     # Ensemble
     w = {"arima":0.35,"hw":0.35,"mc":0.30}
     ens = [round(w['arima']*ar_out['forecast'][i]+w['hw']*hw_out['forecast'][i]+w['mc']*mc_out['p50'][i],4) for i in range(forecast_days)]
     best_idx = int(np.argmin(ens))
 
+    # History (last 120 days for charts, all for longer durations)
+    hist_n = min(120, len(df))
+    H = df.tail(hist_n)
     history = {
-        "dates":   [d.strftime("%Y-%m-%d") for d in H_chart.index],
-        "close":   safe_list(H_chart['Close']),   "open":  safe_list(H_chart['Open']),
-        "high":    safe_list(H_chart['High']),    "low":   safe_list(H_chart['Low']),
-        "sma20":   safe_list(H_chart['SMA_20']),  "sma50": safe_list(H_chart['SMA_50']),
-        "ema21":   safe_list(H_chart['EMA_21']),
-        "bb_upper":safe_list(H_chart['BB_upper']),"bb_lower":safe_list(H_chart['BB_lower']),
-        "bb_mid":  safe_list(H_chart['BB_mid']),  "bb_pct":safe_list(H_chart['BB_pct']),
-        "rsi14":   safe_list(H_chart['RSI_14']),  "rsi7":  safe_list(H_chart['RSI_7']),
-        "macd":    safe_list(H_chart['MACD']),    "macd_sig":safe_list(H_chart['MACD_signal']),
-        "macd_hist":safe_list(H_chart['MACD_hist']),
-        "stoch_k": safe_list(H_chart['Stoch_K']), "stoch_d":safe_list(H_chart['Stoch_D']),
-        "atr":     safe_list(H_chart['ATR_14']),  "cci":   safe_list(H_chart['CCI_20']),
-        "zscore":  safe_list(H_chart['ZScore']),  "willr": safe_list(H_chart['WillR']),
-        "vol10":   safe_list(H_chart['Vol_10d']), "vol20": safe_list(H_chart['Vol_20d']),
-        "returns": safe_list(H_chart['Return_1d']),
+        "dates":   [d.strftime("%Y-%m-%d") for d in H.index],
+        "close":   safe_list(H['Close']),   "open":  safe_list(H['Open']),
+        "high":    safe_list(H['High']),    "low":   safe_list(H['Low']),
+        "sma20":   safe_list(H['SMA_20']),  "sma50": safe_list(H['SMA_50']),
+        "ema21":   safe_list(H['EMA_21']),
+        "bb_upper":safe_list(H['BB_upper']),"bb_lower":safe_list(H['BB_lower']),
+        "bb_mid":  safe_list(H['BB_mid']),  "bb_pct":safe_list(H['BB_pct']),
+        "rsi14":   safe_list(H['RSI_14']),  "rsi7":  safe_list(H['RSI_7']),
+        "macd":    safe_list(H['MACD']),    "macd_sig":safe_list(H['MACD_signal']),
+        "macd_hist":safe_list(H['MACD_hist']),
+        "stoch_k": safe_list(H['Stoch_K']), "stoch_d":safe_list(H['Stoch_D']),
+        "atr":     safe_list(H['ATR_14']),  "cci":   safe_list(H['CCI_20']),
+        "zscore":  safe_list(H['ZScore']),  "willr": safe_list(H['WillR']),
+        "vol10":   safe_list(H['Vol_10d']), "vol20": safe_list(H['Vol_20d']),
+        "returns": safe_list(H['Return_1d']),
     }
 
     return {
@@ -371,25 +396,37 @@ def run_pair(pair_key, forecast_days):
 
 def main():
     ALL_DURATIONS = [7, 14, 30, 60, 90]
-    ALL_PAIRS     = ["EURINR", "USDINR", "GBPINR", "JPYINR", "CNYINR", "SGDINR", "HKDINR"]
-    output = {}
+    ALL_PAIRS     = ["EURINR", "USDINR", "GBPINR", "JPYINR",
+                     "CNYINR", "SGDINR", "HKDINR"]
+
+    output        = {}
+    failed_pairs  = []
 
     for pair in ALL_PAIRS:
         output[pair] = {}
         for dur in ALL_DURATIONS:
-            key = str(dur)
             try:
-                output[pair][key] = run_pair(pair, dur)
-                print(f"  ✓ {pair}/{dur}d done — best: {output[pair][key]['forecast']['best_transfer_date']} @ {output[pair][key]['forecast']['best_transfer_rate']:.4f}")
-            except Exception as e:
-                print(f"  ✗ {pair}/{dur}d failed: {e}")
+                output[pair][str(dur)] = run_pair(pair, dur)
+            except Exception as exc:
+                print(f"  ✗ {pair}/{dur}d failed: {exc}")
                 import traceback; traceback.print_exc()
+                failed_pairs.append(f"{pair}/{dur}d")
+
+    output["_meta"] = {
+        "generated_at":    datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "pairs_succeeded": [p for p in ALL_PAIRS if output.get(p)],
+        "pairs_failed":    failed_pairs,
+        "engine_version":  "2.0.0",
+        "update_interval_h": 6,
+    }
 
     out_path = "multi_data.json"
-    with open(out_path, "w") as f:
-        json.dump(output, f, separators=(',',':'), default=str)
-    size = len(json.dumps(output, separators=(',',':')))
-    print(f"\n✅ Saved → {out_path} ({size/1024:.1f} KB)")
+    with open(out_path, "w") as fh:
+        json.dump(output, fh, separators=(",", ":"), default=str)
+
+    import os
+    size_kb = os.path.getsize(out_path) / 1024
+    print(f"\n✅  Saved → {out_path}  ({size_kb:.1f} KB)")
     return output
 
 if __name__ == "__main__":
