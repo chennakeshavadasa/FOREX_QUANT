@@ -1,6 +1,9 @@
 name: Daily FOREX_QUANT Update
 
 on:
+  schedule:
+    # 02:00, 08:00, 14:00, 20:00 UTC — weekdays only
+    - cron: '0 2,8,14,20 * * 1-5'
   workflow_dispatch:
 
 jobs:
