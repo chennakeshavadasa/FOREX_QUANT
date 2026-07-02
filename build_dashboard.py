@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 def sparkline_svg(prices, color, width=220, height=80):
     prices = [p for p in prices if p is not None]
@@ -88,7 +88,7 @@ def main():
         data = {}
 
     meta = data.get('_meta', {})
-    gen_at = meta.get('generated_at', datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"))
+    gen_at = meta.get('generated_at', datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"))
     
     pairs = [p for p in ["EURINR", "USDINR", "GBPINR", "JPYINR", "CNYINR", "SGDINR", "HKDINR"] if p in data and data[p]]
     durations = [7, 14, 30, 60, 90]
@@ -568,7 +568,7 @@ document.querySelectorAll('.view-analysis-btn').forEach(btn => {
 (function() {
   const genAtStr = '""")
     
-    gen_time_str = meta.get('generated_at', datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")).replace(' UTC', '').replace(' ', 'T')
+    gen_time_str = meta.get('generated_at', datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")).replace(' UTC', '').replace(' ', 'T')
     html.append(gen_time_str)
     
     html.append("""Z';

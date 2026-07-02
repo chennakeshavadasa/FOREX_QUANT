@@ -10,7 +10,7 @@ import json, warnings, sys
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from scipy import stats
 from scipy.stats import skew, kurtosis
 from statsmodels.tsa.arima.model import ARIMA
@@ -24,6 +24,11 @@ warnings.filterwarnings("ignore")
 PAIRS = {
     "EURINR": {"ticker": "EURINR=X", "base": "EUR", "quote": "INR", "name": "Euro / Indian Rupee",   "flag": "🇪🇺🇮🇳"},
     "USDINR": {"ticker": "INR=X",    "base": "USD", "quote": "INR", "name": "US Dollar / Indian Rupee","flag": "🇺🇸🇮🇳"},
+    "GBPINR": {"ticker": "GBPINR=X", "base": "GBP", "quote": "INR", "name": "British Pound / Indian Rupee", "flag": "🇬🇧🇮🇳"},
+    "JPYINR": {"ticker": "JPYINR=X", "base": "JPY", "quote": "INR", "name": "Japanese Yen / Indian Rupee", "flag": "🇯🇵🇮🇳"},
+    "CNYINR": {"ticker": "CNYINR=X", "base": "CNY", "quote": "INR", "name": "Chinese Yuan / Indian Rupee", "flag": "🇨🇳🇮🇳"},
+    "SGDINR": {"ticker": "SGDINR=X", "base": "SGD", "quote": "INR", "name": "Singapore Dollar / Indian Rupee", "flag": "🇸🇬🇮🇳"},
+    "HKDINR": {"ticker": "HKDINR=X", "base": "HKD", "quote": "INR", "name": "Hong Kong Dollar / Indian Rupee", "flag": "🇭🇰🇮🇳"},
 }
 
 DURATIONS = {
@@ -385,7 +390,7 @@ def run_pair(pair_key, forecast_days):
         "seasonality":se_out,"signals":sg_out,"risk":rk_out,
         "forecast":{
             "dates":fc_dates,"arima":ar_out['forecast'],"hw":hw_out['forecast'],
-            "mc_p50":mc_out['p50'],"mc_p5":mc_out['p5'],"mc_p95":mc_out['p95'],
+            "mc_p50":mc_out['p50'],"mc_p5":mc_out['p5'],"mc_p25":mc_out['p25'],"mc_p75":mc_out['p75'],"mc_p95":mc_out['p95'],
             "arima_lower":ar_out['lower_95'],"arima_upper":ar_out['upper_95'],
             "ensemble":ens,
             "best_transfer_day_idx":best_idx,
@@ -413,7 +418,7 @@ def main():
                 failed_pairs.append(f"{pair}/{dur}d")
 
     output["_meta"] = {
-        "generated_at":    datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "generated_at":    datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "pairs_succeeded": [p for p in ALL_PAIRS if output.get(p)],
         "pairs_failed":    failed_pairs,
         "engine_version":  "2.0.0",
