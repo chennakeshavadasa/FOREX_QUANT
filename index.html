@@ -626,15 +626,86 @@ function applyDir(arr){return S.dir==='FX_TO_INR'?arr.map(v=>1/v):arr;}
 // ═══════════════════════════════════════════════════════
 // CHART RENDERING
 // ═══════════════════════════════════════════════════════
+
+// ── Crosshair plugin: vertical line + dot at cursor ──
+const crosshairPlugin = {
+  id: 'crosshair',
+  afterDraw(chart) {
+    const active = chart.tooltip._active;
+    if (!active || !active.length) return;
+    const ctx   = chart.ctx;
+    const x     = active[0].element.x;
+    const top   = chart.scales.y.top;
+    const bot   = chart.scales.y.bottom;
+    ctx.save();
+    // vertical line
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bot);
+    ctx.lineWidth   = 1;
+    ctx.strokeStyle = 'rgba(0,212,255,0.45)';
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    // horizontal guide line at each active point
+    active.forEach(pt => {
+      const y = pt.element.y;
+      ctx.beginPath();
+      ctx.moveTo(chart.scales.x.left, y);
+      ctx.lineTo(chart.scales.x.right, y);
+      ctx.lineWidth   = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.setLineDash([2, 6]);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+};
+Chart.register(crosshairPlugin);
+
+// Label colours matched to dataset border colours
+const DATASET_COLORS = {
+  'HIST':    '#e0e8ff',
+  'ENS':     '#00d4ff',
+  'ARIMA':   '#00ff88',
+  'H-W':     '#ffd32a',
+  'MC50':    '#b89af8',
+  'P95':     '#00ff88',
+  'P50':     '#ffd32a',
+  'P5':      '#ff3d5e',
+};
+
 const BASE_OPTS = {
   responsive:true, maintainAspectRatio:false,
   animation:{duration:600,easing:'easeInOutQuart'},
-  plugins:{legend:{display:false},tooltip:{
-    backgroundColor:'rgba(5,7,14,.97)',borderColor:'#1e2a48',borderWidth:1,
-    titleColor:'#9aaac8',bodyColor:'#eef2ff',padding:12,
-    titleFont:{family:'JetBrains Mono',size:11},
-    bodyFont:{family:'JetBrains Mono',size:13,weight:'700'},
-  }},
+  interaction:{ mode:'index', intersect:false },
+  plugins:{
+    legend:{display:false},
+    tooltip:{
+      backgroundColor:'rgba(5,7,14,.97)',
+      borderColor:'#1e2a48',borderWidth:1,
+      titleColor:'#9aaac8',
+      bodyColor:'#eef2ff',
+      padding:14,
+      titleFont:{family:'JetBrains Mono',size:11},
+      bodyFont:{family:'JetBrains Mono',size:12,weight:'600'},
+      bodySpacing:5,
+      usePointStyle:true,
+      filter: item => item.raw !== null && item.raw !== undefined,
+      callbacks:{
+        title: items => items[0]?.label ?? '',
+        label: ctx => {
+          if (ctx.raw === null || ctx.raw === undefined) return null;
+          const v = typeof ctx.raw === 'number' ? ctx.raw.toFixed(4) : ctx.raw;
+          const lbl = ctx.dataset.label || '';
+          return `  ${lbl.padEnd(6)} ${v}`;
+        },
+        labelColor: ctx => {
+          const c = DATASET_COLORS[ctx.dataset.label] || '#9aaac8';
+          return { borderColor:c, backgroundColor:c, borderWidth:2, borderRadius:2 };
+        },
+      }
+    }
+  },
   scales:{
     x:{grid:{color:'rgba(30,42,72,.5)',drawTicks:false},
        ticks:{color:'#9aaac8',font:{family:'JetBrains Mono',size:11},maxTicksLimit:8,maxRotation:0},
@@ -693,6 +764,17 @@ function renderMCChart(fDates,mcData){
 function renderSeas(seasData){
   destroyChart('dow');destroyChart('mon');
   const bOpts={...BASE_OPTS,animation:{duration:400},
+    interaction:{mode:'index',intersect:false},
+    plugins:{...BASE_OPTS.plugins,tooltip:{...BASE_OPTS.plugins.tooltip,
+      callbacks:{
+        title: items => items[0]?.label ?? '',
+        label: ctx => `  Return  ${ctx.raw.toFixed(4)}%`,
+        labelColor: ctx => {
+          const c = ctx.raw < 0 ? '#ff3d5e' : '#00ff88';
+          return {borderColor:c,backgroundColor:c,borderWidth:2,borderRadius:2};
+        }
+      }
+    }},
     scales:{x:{grid:{display:false},ticks:{color:'#9aaac8',font:{family:'JetBrains Mono',size:11}},border:{color:'#1e2a48'}},
             y:{grid:{color:'rgba(30,42,72,.4)'},ticks:{color:'#9aaac8',font:{family:'JetBrains Mono',size:11}},border:{color:'#1e2a48'}}}};
   function mkBar(id,labels,vals){
