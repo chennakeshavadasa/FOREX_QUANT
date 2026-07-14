@@ -677,12 +677,14 @@ function renderForecastChart(hDates,hClose,fDates,ens,mcData){
 function renderMCChart(fDates,mcData){
   destroyChart('mc2');
   const labels=fDates.map(fmtD);
+  const p95=applyDir(mcData.p95),p50=applyDir(mcData.p50),p5=applyDir(mcData.p5);
   S.charts.mc2=new Chart(document.getElementById('mcChart').getContext('2d'),{
     type:'line',
     data:{labels,datasets:[
-      {data:applyDir(mcData.p95),borderColor:'var(--green)',borderWidth:1.5,pointRadius:0,tension:.3,fill:false},
-      {data:applyDir(mcData.p50),borderColor:'var(--yellow)',borderWidth:2,pointRadius:0,tension:.3,fill:false},
-      {data:applyDir(mcData.p5), borderColor:'var(--red)',  borderWidth:1.5,pointRadius:0,tension:.3,fill:false},
+      {label:'P95',data:p95,borderColor:'#00ff88',borderWidth:2,pointRadius:0,tension:.3,
+       fill:{target:2,above:'rgba(0,212,255,0.12)'}},
+      {label:'P50',data:p50,borderColor:'#ffd32a',borderWidth:3,pointRadius:0,tension:.3,fill:false},
+      {label:'P5', data:p5, borderColor:'#ff3d5e',borderWidth:2,pointRadius:0,tension:.3,fill:false},
     ]},
     options:{...BASE_OPTS}
   });
@@ -698,7 +700,7 @@ function renderSeas(seasData){
       type:'bar',
       data:{labels,datasets:[{data:vals,
         backgroundColor:vals.map(v=>v<0?'rgba(255,61,94,.5)':'rgba(0,255,136,.5)'),
-        borderColor:vals.map(v=>v<0?'var(--red)':'var(--green)'),
+        borderColor:vals.map(v=>v<0?'#ff3d5e':'#00ff88'),
         borderWidth:1,borderRadius:3}]},
       options:{...bOpts}
     });
@@ -724,7 +726,7 @@ function renderIndicators(closes,highs,lows){
     {n:'Z-SCORE-20', v:z.toFixed(3),  bar:Math.min(100,Math.max(0,(z+3)/6*100)),s:z<-1.5?'b':z>1.5?'r':'n',l:z<-1.5?'CHEAP':z>1.5?'EXPENSIVE':'NEUTRAL'},
   ];
   const sc={b:'sb',r:'sr',n:'sn',o:'sr',u:'sb'};
-  const cc2={b:'var(--green)',r:'var(--red)',n:'var(--text-dim)',o:'var(--red)',u:'var(--green)'};
+  const cc2={b:'#00ff88',r:'#ff3d5e',n:'#9aaac8',o:'#ff3d5e',u:'#00ff88'};
 
   // Invert signal display for FX→INR
   function sigClass(s){
