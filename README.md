@@ -2,9 +2,9 @@
 
 A **zero-server, 100% client-side** quantitative foreign exchange analysis platform covering seven INR currency pairs — EUR, USD, GBP, JPY, CNY, SGD, and HKD — with ensemble forecasting, technical indicators, risk analytics, and seasonality analysis.
 
-**Live Dashboard:** [chennakeshavadasa.github.io/FOREX_QUANT](https://chennakeshavadasa.github.io/FOREX_QUANT/)
+**Live Dashboard:** [chennakeshavadasa.github.io/FOREX_QUANT](https://nithinpuru.github.io/fx-quant/)
 
-[![Live](https://img.shields.io/badge/Status-Live-brightgreen)](https://chennakeshavadasa.github.io/FOREX_QUANT/)
+[![Live](https://img.shields.io/badge/Status-Live-brightgreen)](https://nithinpuru.github.io/fx-quant/)
 [![Architecture](https://img.shields.io/badge/Architecture-100%25_Client--Side-blue)](#architecture)
 [![Data](https://img.shields.io/badge/Data-Frankfurter_ECB-informational)](#data-sources)
 [![Cost](https://img.shields.io/badge/Cost-Free-success)](#deployment)
